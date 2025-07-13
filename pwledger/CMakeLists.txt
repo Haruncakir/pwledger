@@ -15,5 +15,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-add_executable(DELETEME initial.cc)
-target_compile_features(DELETEME PRIVATE cxx_std_20)
+add_executable(pwledger initial.cc)
+target_link_libraries(pwledger PRIVATE Sodium::Sodium)
+target_compile_features(pwledger PRIVATE cxx_std_20)

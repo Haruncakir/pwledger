@@ -137,6 +137,18 @@ if(PWLEDGER_ENABLE_SECURITY_HARDENING)
     )
 endif()
 
+find_package(Sodium REQUIRED)
+if(SODIUM_FOUND)
+    message(STATUS "Found libsodium: ${SODIUM_LIBRARIES}")
+    if(SODIUM_VERSION)
+        message(STATUS "libsodium version: ${SODIUM_VERSION}")
+    endif()
+else()
+    message(FATAL_ERROR "libsodium is required for cryptographic operations")
+endif()
+
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
 add_subdirectory(pwledger)
 
 # Display configuration summary for verification
