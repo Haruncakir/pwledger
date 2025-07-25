@@ -19,8 +19,10 @@
 #ifndef PWLEDGER_TERMINALMANAGER_H
 #define PWLEDGER_TERMINALMANAGER_H
 
+#include <concepts>
 #include <iostream>
 #include <stdexcept>
+#include <type_traits>
 
 #ifdef _WIN32
 #include <io.h>
@@ -32,6 +34,18 @@
 
 namespace pwledger {
 
+template <typename T>
+concept TerminalManagerDerivable = requires(T t, const T ct) {
+  !std::is_copy_constructible_v<T>;
+  !std::is_copy_assignable_v<T>;
+  !std::is_move_constructible_v<T>;
+  !std::is_move_assignable_v<T>;
+
+  { t.configureTerminal() } -> std::same_as<void>;
+  { t.restore() } -> std::same_as<void>;
+  { ct.isConfigured() } -> std::same_as<bool>;
+};
+
 // The TerminalManager class provides cross-platform terminal control for secure input operations.
 // When handling sensitive data like passwords, standard terminal behavior can inadvertently
 // expose user input through echoing (displaying typed characters) or line buffering
@@ -41,31 +55,12 @@ namespace pwledger {
 // This class uses the Resource Acquisition Is Initialization (RAII) pattern to ensure
 // terminal settings are automatically restored when the object is destroyed, regardless
 // of how the program exits (normal completion or exception).
-//
 
-/**
- * @brief Key features of the input handling.
- *
- * - Disables input echoing to prevent password visibility.
- * - Enables immediate character processing (no line buffering).
- * - Automatically restores original settings on destruction.
- * - Provides cross-platform compatibility for Windows and Unix-like systems.
- */
-class TerminalManager {
-private:
-#ifdef _WIN32
-  HANDLE hStdin_;
-  DWORD originalMode_;
-  bool modeChanged_;
-#elif defined(__linux__) || defined(__APPLE__) || defined(__unix__)
-  struct termios originalSettings_ {};
-  bool settingsChanged_{false};  // initialized in-class to suppress warning
-#endif
-
-public:
+template <typename Derived>
+struct TerminalManager {
   TerminalManager() {
     try {
-      configureTerminal();
+      static_cast<Derived*>(this)->configureTerminal();
     } catch (const std::exception& e) {
       // if configuration fails, we should still be in a valid state
       // the destructor will handle any partial changes
@@ -74,7 +69,7 @@ public:
   }
 
   // automatically restore original terminal settings
-  ~TerminalManager() noexcept { restore(); }
+  ~TerminalManager() noexcept { static_cast<Derived*>(this)->restore(); }
 
   // prevent resource duplication
   TerminalManager(const TerminalManager&) = delete;
@@ -82,20 +77,29 @@ public:
   TerminalManager& operator=(const TerminalManager&) = delete;
   TerminalManager& operator=(TerminalManager&&) = delete;
 
-  // checks if terminal configuration was successful
-  bool isConfigured() const {
-#ifdef _WIN32
-    return modeChanged_;
-#elif defined(__linux__) || defined(__APPLE__) || defined(__unix__)
-    return settingsChanged_;
-#else
-    return false;
-#endif
-  }
+  bool isConfigured() const { return static_cast<Derived*>(this)->isConfigured(); }
+};
 
-private:
-  void configureTerminal() {
+
+namespace details {
+/**
+ * @brief Key features of the input handling.
+ *
+ * - Disables input echoing to prevent password visibility.
+ * - Enables immediate character processing (no line buffering).
+ * - Automatically restores original settings on destruction.
+ * - Provides cross-platform compatibility for Windows and Unix-like systems.
+ */
 #ifdef _WIN32
+class WinTerminalManager : public TerminalManager<WinTerminalManager> {
+public:
+  WinTerminalManager(const WinTerminalManager&) = delete;
+  WinTerminalManager(WinTerminalManager&&) = delete;
+  WinTerminalManager& operator=(const WinTerminalManager&) = delete;
+  WinTerminalManager& operator=(WinTerminalManager&&) = delete;
+  ~WinTerminalManager() = default;
+
+  void configureTerminal() {
     hStdin_ = GetStdHandle(STD_INPUT_HANDLE);
     if (hStdin_ == INVALID_HANDLE_VALUE) {
       throw std::runtime_error("Failed to get standard input handle");
@@ -115,8 +119,36 @@ private:
     }
 
     modeChanged_ = true;
+  }
+  bool isConfigured() const { return modeChanged_; }
+  void restore() noexcept {
+    try {
+      if (modeChanged_ && hStdin_ != INVALID_HANDLE_VALUE) {
+        SetConsoleMode(hStdin_, originalMode_);
+        modeChanged_ = false;
+      }
+    } catch (...) {
+      // swallow exceptions in destructor to prevent termination for now
+      // TODO: log this error
+    }
+  }
 
+private:
+  HANDLE hStdin_;
+  DWORD originalMode_;
+  bool modeChanged_;
+};
+static_assert(TerminalManagerDerivable<WinTerminalManager>, "Windows Terminal Manager is not properly defined");
 #elif defined(__linux__) || defined(__APPLE__) || defined(__unix__)
+class UnixTerminalManager : public TerminalManager<UnixTerminalManager> {
+public:
+  UnixTerminalManager(const UnixTerminalManager&) = delete;
+  UnixTerminalManager(UnixTerminalManager&&) = delete;
+  UnixTerminalManager& operator=(const UnixTerminalManager&) = delete;
+  UnixTerminalManager& operator=(UnixTerminalManager&&) = delete;
+  ~UnixTerminalManager() = default;
+
+  void configureTerminal() {
     if (tcgetattr(STDIN_FILENO, &originalSettings_) != 0) {
       throw std::runtime_error("Failed to get terminal attributes");
     }
@@ -139,33 +171,33 @@ private:
     }
 
     settingsChanged_ = true;
-
-#else
-    // unsupported platform
-    throw std::runtime_error("Terminal configuration not supported on this platform");
-#endif
   }
-
-private:
+  bool isConfigured() const { return settingsChanged_; }
   void restore() noexcept {
     try {
-#ifdef _WIN32
-      if (modeChanged_ && hStdin_ != INVALID_HANDLE_VALUE) {
-        SetConsoleMode(hStdin_, originalMode_);
-        modeChanged_ = false;
-      }
-#elif defined(__linux__) || defined(__APPLE__) || defined(__unix__)
       if (settingsChanged_) {
         tcsetattr(STDIN_FILENO, TCSANOW, &originalSettings_);
         settingsChanged_ = false;
       }
-#endif
     } catch (...) {
       // swallow exceptions in destructor to prevent termination for now
       // TODO: log this error
     }
   }
+
+private:
+  struct termios originalSettings_ {};
+  bool settingsChanged_{false};
 };
+static_assert(TerminalManagerDerivable<UnixTerminalManager>, "Unix Terminal Manager is not properly defined");
+#endif
+}  // namespace details
+
+#ifdef _WIN32
+using TerminalManager_v = TerminalManager<details::WinTerminalManager>;
+#elif defined(__linux__) || defined(__APPLE__) || defined(__unix__)
+using TerminalManager_v = TerminalManager<details::UnixTerminalManager>;
+#endif
 
 }  // namespace pwledger
 
