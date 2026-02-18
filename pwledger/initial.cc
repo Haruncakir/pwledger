@@ -55,7 +55,7 @@ static pwledger::secure_string readPassword(const std::string &prompt = "Enter p
   }
 
   pwledger::secure_string password;
-  char ch{};
+  char ch{}; // UTF support???
 
   while (true) {
     ch = static_cast<char>(std::cin.get());
@@ -106,13 +106,9 @@ void storePassword() {
   // minimize the time between password input and encrpytion.
 
   // STEP 1
-  // TODO: implement a custom input routine that disables echo to
-  // the terminal
-  // UNIX: tcgetattr() and tcsetattr()
-  // Windows: SetConsoloMode()
   auto password = readPassword();
   // TODO: ASCII vs UTF-8 (or UTF family) any issue arise?
-  // SEARCH: can user provide suspicious password ?
+  // INVESTIGATE: can user provide suspicious password ?
 
   // STEP 2
   // TODO: perform validation on password (if necessary)
