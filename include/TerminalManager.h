@@ -57,32 +57,29 @@
 // --------------
 // Terminal settings are restored in the concrete destructor regardless of how
 // the scope is exited (normal return or exception). The base destructor is
-// intentionally trivial (= default) and does NOT call restore(). This is
-// because base destructors run *after* the derived object's members are
-// already destroyed. Calling restore() from the base destructor would access
-// destroyed data (hStdin_, originalSettings_, etc.), which is undefined
-// behavior. Each concrete class is responsible for calling restore() in its
-// own destructor.
+// intentionally trivial (= default) and does NOT call restore(). Base
+// destructors run after the derived object's members are already destroyed;
+// calling restore() from the base destructor would access destroyed members,
+// which is undefined behavior. Each concrete class is therefore responsible
+// for calling restore() in its own destructor.
 //
 // FAILURE MODEL
 // -------------
-// configureTerminal() throws std::runtime_error on failure. The exception is
-// NOT caught or swallowed by the base constructor — it propagates to the
-// caller. This is deliberate: a caller who wants to tolerate a terminal
-// configuration failure can catch it themselves and check isConfigured().
-// Swallowing it in the base would force every caller to check isConfigured()
-// after construction to detect a silent failure, which no one will reliably do.
+// configureTerminal() throws std::runtime_error on failure and the exception
+// propagates to the caller. A caller who wants to tolerate a terminal
+// configuration failure can catch it themselves and inspect isConfigured().
 //
 // restore() is noexcept and best-effort. The underlying C functions
-// (tcsetattr, SetConsoleMode) do not throw; they return error codes. A failure
-// in restore() is logged to stderr if possible but does not abort, because
-// a partially-restored terminal is better than a crash during stack unwinding.
+// (tcsetattr, SetConsoleMode) return error codes rather than throwing;
+// failures are logged to stderr. A restore failure does not abort because
+// a partially-restored terminal is preferable to a crash during stack
+// unwinding.
 //
 // THREAD SAFETY
 // -------------
-// TerminalManager and its derived classes are NOT thread-safe. Only one
-// instance should be active at a time per process, as terminal attributes
-// are process-global state.
+// TerminalManager and its derived classes are NOT thread-safe. Terminal
+// attributes are process-global state; only one instance should be active
+// at a time per process.
 //
 // ============================================================================
 
@@ -93,14 +90,10 @@ namespace pwledger {
 // ----------------------------------------------------------------------------
 // Enforces the interface contract for CRTP derived classes at compile time.
 //
-// IMPORTANT: The original implementation placed the trait checks
-// (!std::is_copy_constructible_v<T>, etc.) inside a requires{} expression
-// block. That is incorrect: a requires{} block tests whether expressions are
-// *syntactically well-formed*, not whether they evaluate to true. A bare bool
-// expression like `!std::is_copy_constructible_v<T>` is always syntactically
-// valid regardless of the actual trait value, so the concept was vacuously
-// satisfied by every type. The trait checks must appear as top-level
-// conjuncts (&&) outside the requires{} block to be evaluated correctly.
+// Trait predicates (!std::is_copy_constructible_v<T>, etc.) appear as
+// top-level conjuncts outside the requires{} expression so that they are
+// evaluated as boolean conditions. Placing them inside a requires{} block
+// would test only syntactic well-formedness, not the truth of the predicate.
 template <typename T>
 concept TerminalManagerDerivable =
     !std::is_copy_constructible_v<T>  &&
@@ -127,27 +120,23 @@ concept TerminalManagerDerivable =
 // This class uses the Resource Acquisition Is Initialization (RAII) pattern
 // to ensure terminal settings are automatically restored when the object is
 // destroyed, regardless of how the program exits (normal completion or
-// exception). See "RAII GUARANTEE" in the file header for why restore() is
-// NOT called from this base destructor.
+// exception). See "RAII GUARANTEE" in the file header for the precise
+// invariant and why restore() is not called from this base destructor.
 //
-// The base does NOT provide isConfigured(). Derived classes must implement it.
-// If a derived class omits it, the TerminalManagerDerivable concept and the
-// static_assert in the detail namespace will produce a compile-time error.
-// There is no fallback in the base to avoid the infinite-recursion trap where
-// a missing derived override causes the base to call itself.
+// The base does not provide isConfigured(). Each concrete derived class must
+// implement it. The TerminalManagerDerivable concept and the static_assert in
+// the detail namespace enforce this at compile time.
 template <typename Derived>
 struct TerminalManager {
-  // configureTerminal() is called by the derived class constructor, not here.
-  // See "FAILURE MODEL" in the file header for why exceptions must propagate.
   TerminalManager()  = default;
 
   // Trivial. restore() is intentionally NOT called here.
   // See "RAII GUARANTEE" in the file header.
   ~TerminalManager() noexcept = default;
 
-  // Prevent resource duplication. Terminal attributes are process-global
-  // state; two live managers would fight over the same settings.
-  // Derived classes inherit these deletions and do not need to re-declare them.
+  // Terminal attributes are process-global state. Two live managers would
+  // produce conflicting saves and restores of the same underlying settings.
+  // Derived classes inherit these deletions and need not re-declare them.
   TerminalManager(const TerminalManager&)            = delete;
   TerminalManager(TerminalManager&&)                 = delete;
   TerminalManager& operator=(const TerminalManager&) = delete;
@@ -155,10 +144,8 @@ struct TerminalManager {
 };
 
 // ----------------------------------------------------------------------------
-// detail namespace
+// detail namespace — platform-specific implementations
 // ----------------------------------------------------------------------------
-// Platform-specific implementations. "detail" (singular) follows the
-// convention used in Abseil, Folly, libc++, and libstdc++.
 namespace detail {
 
 // ----------------------------------------------------------------------------
@@ -166,32 +153,25 @@ namespace detail {
 //
 //   - Disables input echoing to prevent password visibility.
 //   - Enables immediate character processing (no line buffering / canonical
-//     mode), so each keystroke is available without waiting for Enter.
+//     mode) so each keystroke is available without waiting for Enter.
 //   - Automatically restores original settings on destruction via RAII.
 //   - Provides cross-platform compatibility for Windows and Unix-like systems.
 // ----------------------------------------------------------------------------
 
 #ifdef _WIN32
 
-// --------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // WinTerminalManager
-// --------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 class WinTerminalManager : public TerminalManager<WinTerminalManager> {
 public:
-  // Members are initialized to safe sentinel values so that restore() is
-  // always safe to call, even if configureTerminal() throws before assigning
-  // them. The original code left hStdin_ and originalMode_ uninitialized,
-  // which meant restore() could read garbage on a partial-construction throw.
   WinTerminalManager() {
     configureTerminal();  // throws on failure; see FAILURE MODEL
   }
 
-  // restore() must be called from the concrete destructor, not the base.
+  // restore() is called from this destructor, not the base.
   // See "RAII GUARANTEE" in the file header.
   ~WinTerminalManager() noexcept { restore(); }
-
-  // Inherited from base: copy and move are deleted. Re-declaring them here
-  // is redundant and adds noise; the base deletions are sufficient.
 
   void configureTerminal() {
     hStdin_ = GetStdHandle(STD_INPUT_HANDLE);
@@ -219,13 +199,10 @@ public:
 
   void restore() noexcept {
     if (modeChanged_ && hStdin_ != INVALID_HANDLE_VALUE) {
-      // SetConsoleMode is a C API and does not throw. The original code
-      // wrapped this in try/catch, which silently discarded the only signal
-      // of failure: the return value. We check it and log to stderr instead.
-      // A restore failure is logged but not aborted — a partially-restored
-      // terminal is preferable to a crash during stack unwinding.
+      // SetConsoleMode is a C API; failures are surfaced via return value.
+      // A restore failure is logged but not treated as fatal.
+      // TODO(#issue-N): replace with structured logging once available.
       if (!SetConsoleMode(hStdin_, originalMode_)) {
-        // TODO(#issue-N): replace with structured logging once available.
         std::cerr << "Warning: Failed to restore console mode (error "
                   << GetLastError() << ")\n";
       }
@@ -234,6 +211,9 @@ public:
   }
 
 private:
+  // Members are in-class initialized to safe sentinel values so that
+  // restore() is always safe to call, even if configureTerminal() throws
+  // before reaching its assignments.
   HANDLE hStdin_       = INVALID_HANDLE_VALUE;
   DWORD  originalMode_ = 0;
   bool   modeChanged_  = false;
@@ -242,25 +222,22 @@ private:
 static_assert(TerminalManagerDerivable<WinTerminalManager>,
               "WinTerminalManager does not satisfy TerminalManagerDerivable. "
               "Ensure configureTerminal(), restore(), and isConfigured() are "
-              "correctly defined, and that copy/move operations are deleted.");
+              "correctly defined and that copy/move operations are deleted.");
 
 #elif defined(__linux__) || defined(__APPLE__) || defined(__unix__)
 
-// --------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // UnixTerminalManager
-// --------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 class UnixTerminalManager : public TerminalManager<UnixTerminalManager> {
 public:
   UnixTerminalManager() {
     configureTerminal();  // throws on failure; see FAILURE MODEL
   }
 
-  // restore() must be called from the concrete destructor, not the base.
+  // restore() is called from this destructor, not the base.
   // See "RAII GUARANTEE" in the file header.
   ~UnixTerminalManager() noexcept { restore(); }
-
-  // Inherited from base: copy and move are deleted. Re-declaring them here
-  // is redundant and adds noise; the base deletions are sufficient.
 
   void configureTerminal() {
     if (tcgetattr(STDIN_FILENO, &originalSettings_) != 0) {
@@ -272,15 +249,14 @@ public:
     // Disable echo and canonical mode.
     // ECHO:   prevents typed characters from appearing on screen.
     // ICANON: disables line buffering, allowing immediate character processing
-    //         without waiting for Enter (canonical mode).
-    // The explicit cast to tcflag_t is required to suppress a signedness
-    // warning on platforms where ECHO | ICANON is computed as signed int.
+    //         without waiting for Enter.
+    // The explicit cast to tcflag_t suppresses a signedness warning on
+    // platforms where ECHO | ICANON is computed as a signed int.
     // See: https://www.man7.org/linux/man-pages/man3/termios.3.html
     newSettings.c_lflag &= ~(static_cast<tcflag_t>(ECHO | ICANON));
 
-    // For immediate input processing: require at least 1 character with no
-    // timeout. VMIN=1 / VTIME=0 means read() blocks until exactly 1 byte is
-    // available, then returns immediately.
+    // VMIN=1 / VTIME=0: read() blocks until exactly 1 byte is available,
+    // then returns immediately with no timeout.
     newSettings.c_cc[VMIN]  = 1;
     newSettings.c_cc[VTIME] = 0;
 
@@ -295,18 +271,17 @@ public:
 
   void restore() noexcept {
     if (settingsChanged_) {
-      // tcsetattr is a C function and does not throw. The original code
-      // wrapped this in try/catch, which silently discarded the only signal
-      // of failure: the return value. We check it and log to stderr instead.
+      // tcsetattr is a C function; failures are surfaced via return value.
       //
-      // TCSAFLUSH is used here instead of TCSANOW. TCSAFLUSH waits for all
-      // pending output to be transmitted and discards any unread input before
-      // applying the settings. This avoids partial terminal state when
-      // restoring: e.g., pending echo-suppressed keystrokes that the old
-      // settings would have handled are discarded rather than replayed under
-      // the restored (echo-enabled) settings, which could expose them.
+      // TCSAFLUSH is used rather than TCSANOW: it waits for all pending
+      // output to drain and discards any unread input before applying the
+      // restored settings. This prevents pending keystrokes that were entered
+      // under echo-suppressed settings from being replayed and displayed once
+      // echo is re-enabled.
+      //
+      // A restore failure is logged but not treated as fatal.
+      // TODO(#issue-N): replace with structured logging once available.
       if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &originalSettings_) != 0) {
-        // TODO(#issue-N): replace with structured logging once available.
         std::cerr << "Warning: Failed to restore terminal attributes\n";
       }
       settingsChanged_ = false;
@@ -314,14 +289,15 @@ public:
   }
 
 private:
-  struct termios originalSettings_ {};  // zero-initialized sentinel
+  // Zero-initialized; safe sentinel for restore() on partial construction.
+  struct termios originalSettings_ {};
   bool           settingsChanged_  = false;
 };
 
 static_assert(TerminalManagerDerivable<UnixTerminalManager>,
               "UnixTerminalManager does not satisfy TerminalManagerDerivable. "
               "Ensure configureTerminal(), restore(), and isConfigured() are "
-              "correctly defined, and that copy/move operations are deleted.");
+              "correctly defined and that copy/move operations are deleted.");
 
 #endif  // platform selection
 
@@ -330,14 +306,8 @@ static_assert(TerminalManagerDerivable<UnixTerminalManager>,
 // ----------------------------------------------------------------------------
 // TerminalManager_v — platform alias
 // ----------------------------------------------------------------------------
-// Resolves to the concrete platform implementation, not the CRTP base.
-//
-// The original code aliased TerminalManager<details::WinTerminalManager>
-// (the base), which meant constructing TerminalManager_v called
-// static_cast<Derived*>(this)->configureTerminal() on a base object, not a
-// WinTerminalManager — undefined behavior. The alias must name the concrete
-// class so that construction, destruction, and CRTP dispatch all operate on
-// a complete object.
+// Resolves to the concrete platform implementation. Callers should use this
+// alias rather than naming the platform class directly.
 #ifdef _WIN32
 using TerminalManager_v = detail::WinTerminalManager;
 #elif defined(__linux__) || defined(__APPLE__) || defined(__unix__)
