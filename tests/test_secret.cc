@@ -1,11 +1,6 @@
 #include <gtest/gtest.h>
 #include <pwledger/Secret.h>
 
-TEST(suite_name, test_name) {
-    EXPECT_EQ(2+2, 4); // non-fatal assertion
-    ASSERT_EQ(a, b); // test stops immediately
-}
-
 // Secret must guarantee the guiding invariants mentioned in the header:
 // 1. Single ownership: no copies. Move invalidates the source.
 // 2. All sensitive bytes live in sodium-secured memory at all times.
@@ -16,10 +11,11 @@ TEST(suite_name, test_name) {
 //
 // So lets test them one-by-one
 
-// Verify that copy construction and copy assignment are statically deleted.
+// test no copies, compile-time assertions are enough
 static_assert(!std::is_copy_constructible_v<pwledger::Secret>);
 static_assert(!std::is_copy_assignable_v<pwledger::Secret>);
 
+// test single ownership policy
 TEST(SecretTest, move_invalidates_source) {
   pwledger::Secret src(32);
   src.with_write_access([](std::span<char> buf) {
@@ -30,7 +26,6 @@ TEST(SecretTest, move_invalidates_source) {
 
   ASSERT_EQ(src.size(), 0u);
 }
-
 TEST(SecretTest, move_preserves_data_in_destination) {
   constexpr std::string_view kMaterial = "secret-material-here-31-bytes!!";
   pwledger::Secret src(kMaterial.size());

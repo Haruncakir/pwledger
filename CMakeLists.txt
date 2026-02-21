@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Harun
+# Copyright (c) 2026 Harun
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -30,7 +30,7 @@ set(PACKAGE_NAME "pwledger")
 set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 set(PACKAGE_TARNAME "${PACKAGE_NAME}-${PACKAGE_VERSION}")
 
-project(${PACKAGE_NAME} 
+project(${PACKAGE_NAME}
     VERSION ${PACKAGE_VERSION}
     LANGUAGES CXX C ASM
     DESCRIPTION "Secure password management application")
@@ -149,7 +149,18 @@ endif()
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
-add_subdirectory(pwledger)
+# Build the core library (Secret, TerminalManager, etc.)
+add_subdirectory(src)
+
+# 2. Build the executables (CLI app, Native Messaging Host)
+add_subdirectory(apps)
+
+# 3. Build tests (if testing is enabled)
+option(PWLEDGER_BUILD_TESTS "Build the test suite" ON)
+if(PWLEDGER_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 # Display configuration summary for verification
 message(STATUS "=== PWLedger Configuration Summary ===")

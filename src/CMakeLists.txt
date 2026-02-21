@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Harun
+# Copyright (c) 2026 Harun
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -15,6 +15,23 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-add_executable(pwledger initial.cc)
-target_link_libraries(pwledger PRIVATE Sodium::Sodium)
-target_compile_features(pwledger PRIVATE cxx_std_20)
+add_library(pwledger_core STATIC
+  # .cc files in src
+)
+
+# Tell the library where its public headers are. 
+# The generator expression ensures apps linking to this library 
+# automatically get the right include path.
+target_include_directories(pwledger_core
+    PUBLIC 
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+
+# Link libsodium to the core library
+if(TARGET Sodium::Sodium)
+    target_link_libraries(pwledger_core PRIVATE Sodium::Sodium)
+else()
+    target_link_libraries(pwledger_core PRIVATE sodium)
+endif()
+
