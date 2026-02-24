@@ -285,7 +285,7 @@ public:
   }
 
 private:
-  char*       data_ = nullptr;
+  char*       data_ = nullptr; // TODO: std::byte* or std::span<std::byte>
   std::size_t size_ = 0;
 
 #ifndef NDEBUG
