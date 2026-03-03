@@ -115,6 +115,13 @@
 
 namespace pwledger {
 
+// Forward-declarations of the access guard classes for Secret to grant
+// friendship. The full definitions follow after Secret's closing brace.
+namespace details {
+class Secret_readaccess;
+class Secret_writeaccess;
+}  // namespace details
+
 // ----------------------------------------------------------------------------
 // SecureAllocator (CRTP interface stub)
 // ----------------------------------------------------------------------------
@@ -272,17 +279,15 @@ public:
   //
   // [[nodiscard]] is applied so that a value returned by `f` is not silently
   // discarded at the call site.
+  //
+  // Definitions are out-of-line (below the details namespace) because they
+  // construct Secret_readaccess / Secret_writeaccess, which are incomplete
+  // types at this point in the header.
   template <typename F>
-  [[nodiscard]] decltype(auto) with_read_access(F&& f) const {
-    details::Secret_readaccess guard(*this);
-    return std::forward<F>(f)(guard.get());
-  }
+  [[nodiscard]] decltype(auto) with_read_access(F&& f) const;
 
   template <typename F>
-  [[nodiscard]] decltype(auto) with_write_access(F&& f) {
-    details::Secret_writeaccess guard(*this);
-    return std::forward<F>(f)(guard.get());
-  }
+  [[nodiscard]] decltype(auto) with_write_access(F&& f);
 
 private:
   char*       data_ = nullptr; // TODO: std::byte* or std::span<std::byte>
@@ -433,6 +438,23 @@ private:
   Secret& sec_;
 };
 }  // namespace details
+
+// ----------------------------------------------------------------------------
+// Secret::with_read_access / with_write_access — out-of-line definitions
+// ----------------------------------------------------------------------------
+// These are defined after Secret_readaccess and Secret_writeaccess are
+// complete types. See the declarations inside the Secret class above.
+template <typename F>
+[[nodiscard]] decltype(auto) Secret::with_read_access(F&& f) const {
+  details::Secret_readaccess guard(*this);
+  return std::forward<F>(f)(guard.get());
+}
+
+template <typename F>
+[[nodiscard]] decltype(auto) Secret::with_write_access(F&& f) {
+  details::Secret_writeaccess guard(*this);
+  return std::forward<F>(f)(guard.get());
+}
 
 }  // namespace pwledger
 

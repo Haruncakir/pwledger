@@ -106,118 +106,13 @@ else()
     set(ARCH_SPECIFIC_FLAGS "-mtune=generic")
 endif()
 
-# Function to apply all pwledger-specific compile options to a target
-# This encapsulates our security and performance requirements
-function(apply_pwledger_compile_options_to_target THETARGET)
-    # System and threading definitions required for secure applications
-    target_compile_definitions(${THETARGET}
-        PRIVATE
-            _REENTRANT              # Enable thread-safe library functions
-            _GNU_SOURCE             # Enable GNU extensions
-            _THREAD_SAFE            # Enable thread-safe operations
-            _LARGEFILE64_SOURCE     # Enable large file support
-            _FILE_OFFSET_BITS=64    # Enable 64-bit file offsets
-            
-            # Security-focused definitions
-            $<$<BOOL:${PWLEDGER_ENABLE_SECURITY_HARDENING}>:
-                _FORTIFY_SOURCE=2   # Enable buffer overflow detection
-                PWLEDGER_SECURE_BUILD=1
-            >
-    )
-    
-    # Core compile options that ensure security and correctness
-    target_compile_options(${THETARGET}
-        PRIVATE
-            # Debug and development flags
-            -g                          # Debug symbols
-            -finput-charset=UTF-8       # Handle UTF-8 input properly
-            -fsigned-char               # Ensure consistent char behavior
-            
-            # Warning configuration - be strict about potential issues
-            -Wall                       # Enable most warnings
-            -Wextra                     # Additional useful warnings
-            -Wpedantic                  # Strict standard compliance
-            -Wconversion                # Warn about potentially lossy conversions
-            -Wsign-conversion           # Warn about signed/unsigned mismatches
-            -Wcast-align                # Warn about alignment issues
-            -Wcast-qual                 # Warn about qualifier removal
-            -Wformat=2                  # Strict format string checking
-            -Wmissing-include-dirs      # Warn about missing include directories
-            -Wold-style-cast            # Prefer C++ casts over C casts
-            -Woverloaded-virtual        # Warn about virtual function issues
-            -Wredundant-decls           # Warn about redundant declarations
-            -Wshadow                    # Warn about variable shadowing
-            -Wstrict-overflow=5         # Warn about overflow assumptions
-            -Wswitch-default            # Require default cases in switches
-            -Wundef                     # Warn about undefined macros
-            -Werror=return-type         # Missing return is an error
-            -Werror=uninitialized       # Uninitialized variables are errors
-            
-            # Warnings we suppress for practicality but monitor
-            -Wno-deprecated             # Allow deprecated functions (monitor separately)
-            -Wno-deprecated-declarations # Allow deprecated declarations
-            -Wno-unused-parameter       # Allow unused parameters (common in interfaces)
-            
-            # Security-focused compiler options
-            $<$<BOOL:${PWLEDGER_ENABLE_SECURITY_HARDENING}>:
-                -fstack-protector-strong    # Stack smashing protection
-                -fPIE                       # Position independent executable
-                -D_FORTIFY_SOURCE=2         # Buffer overflow detection
-                -Wstack-protector           # Warn about stack protection issues
-                -fstack-clash-protection    # Stack clash protection
-            >
-            
-            # Architecture-specific optimizations
-            ${ARCH_SPECIFIC_FLAGS}
-            
-            # Compiler-specific additional flags
-            $<$<BOOL:${COMPILER_IS_GCC}>:
-                -Wlogical-op            # Warn about logical operation issues (GCC-specific)
-                -Wduplicated-cond       # Warn about duplicated conditions (GCC-specific)
-                -Wduplicated-branches   # Warn about duplicated branches (GCC-specific)
-                -Wnull-dereference      # Warn about null pointer dereferences (GCC-specific)
-            >
-            
-            $<$<BOOL:${COMPILER_IS_CLANG}>:
-                -Wthread-safety         # Thread safety analysis (Clang-specific)
-                -Wthread-safety-beta    # Experimental thread safety warnings (Clang-specific)
-            >
-    )
-    
-    # Linker options for security hardening
-    if(PWLEDGER_ENABLE_SECURITY_HARDENING)
-        target_link_options(${THETARGET}
-            PRIVATE
-                -pie                    # Position independent executable
-                -Wl,-z,relro           # Read-only relocations
-                -Wl,-z,now             # Immediate binding
-                -Wl,-z,noexecstack     # Non-executable stack
-                -Wl,-z,defs            # Disallow undefined symbols
-                -Wl,--as-needed        # Only link needed libraries
-        )
-    endif()
-    
-    # Additional security considerations for password management
-    target_compile_definitions(${THETARGET}
-        PRIVATE
-            # Memory security
-            $<$<BOOL:${PWLEDGER_ENABLE_SECURITY_HARDENING}>:
-                PWLEDGER_SECURE_MEMORY=1        # Enable secure memory handling
-                PWLEDGER_ZERO_ON_FREE=1         # Zero memory on deallocation
-                PWLEDGER_MLOCK_SENSITIVE=1      # Lock sensitive memory pages
-            >
-    )
-endfunction()
-
+# NOTE: Security hardening flags (stack protection, PIE, RELRO, _FORTIFY_SOURCE,
+# etc.) are applied globally in the root CMakeLists.txt. Architecture-specific
+# flags (ARCH_SPECIFIC_FLAGS) are computed above and available for use by targets
+# that need them.
+#
 # Display Unix-specific configuration summary
 message(STATUS "=== Unix Compiler Configuration ===")
 message(STATUS "Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "Architecture optimizations: ${ARCH_SPECIFIC_FLAGS}")
-message(STATUS "Security hardening: ${PWLEDGER_ENABLE_SECURITY_HARDENING}")
-if(PWLEDGER_ENABLE_SECURITY_HARDENING)
-    message(STATUS "  - Stack protection: enabled")
-    message(STATUS "  - PIE/ASLR: enabled")
-    message(STATUS "  - Fortify source: enabled")
-    message(STATUS "  - Relro/Bind now: enabled")
-endif()
 message(STATUS "==================================")

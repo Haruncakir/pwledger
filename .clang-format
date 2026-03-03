@@ -6,7 +6,7 @@ AlignAfterOpenBracket: Align
 AlignTrailingComments: 'true'
 AllowAllArgumentsOnNextLine: 'false'
 AllowAllParametersOfDeclarationOnNextLine: 'false'
-AllowAllConstructorInitializersOnNextLine: 'false'
+PackConstructorInitializers: NextLine
 AllowShortBlocksOnASingleLine: 'false'
 AllowShortCaseLabelsOnASingleLine: 'true'
 AllowShortFunctionsOnASingleLine: Inline
@@ -28,4 +28,4 @@ SortIncludes: 'true'
 SortUsingDeclarations: 'true'
 Standard: c++20
 UseTab: Never
-IndentRequires: 'true'
+IndentRequiresClause: 'true'

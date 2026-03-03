@@ -98,7 +98,9 @@ if(PWLEDGER_ENABLE_SECURITY_HARDENING)
         add_compile_options(
             -fstack-protector-strong    # Stack smashing protection
             -fPIE                       # Position independent executable
-            -D_FORTIFY_SOURCE=2         # Buffer overflow detection
+            # _FORTIFY_SOURCE is set per build type in PwledgerCompilerUnix.cmake
+            # rather than globally, because it requires at least -O1 and is
+            # silently ignored in debug (-O0) builds.
         )
         add_link_options(
             -pie                        # Position independent executable

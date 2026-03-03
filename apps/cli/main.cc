@@ -320,6 +320,14 @@ std::size_t read_secret_from_stdin(Secret& out, std::size_t max_bytes) {
   std::size_t written = 0;
   out.with_write_access([&](std::span<char> buf) {
     sodium_memzero(buf.data(), buf.size());
+    // std::cin.get() returns int (to distinguish EOF from valid bytes).
+    // The cast to char is intentionally ASCII-only: passwords are sequences
+    // of printable ASCII characters for interoperability with the widest
+    // set of services. A UTF-8 migration would require:
+    //   - reading multi-byte sequences (std::codecvt or ICU)
+    //   - NFC normalization (to ensure consistent byte representation)
+    //   - updating Secret buffer sizing (multi-byte characters need more space)
+    // Until then, the supported input range is [0x20, 0x7E] plus control keys.
     int ch = 0;
     while (written < max_bytes - 1) {
       ch = std::cin.get();
@@ -360,6 +368,10 @@ std::size_t prompt_secret(std::string_view prompt,
   std::cout.flush();
   std::size_t n2 = read_secret_from_stdin(confirm_buf, max_bytes);
 
+  // The nested with_read_access calls below operate on two *different* Secret
+  // objects (out and confirm_buf), so there is no overlapping-guard UB.
+  // The ACCESS GUARD RULES in Secret.h prohibit overlapping guards on the
+  // *same* Secret; distinct Secrets may be opened concurrently.
   bool match = false;
   out.with_read_access([&](std::span<const char> a) {
     confirm_buf.with_read_access([&](std::span<const char> b) {
@@ -426,6 +438,10 @@ bool entry_create(PrimaryTable& table,
   }
 
   // 256 bytes provides 255 usable characters (the last byte holds '\0').
+  // This is sufficient for the vast majority of passwords and passphrases.
+  // It is intentionally *not* sized for SSH private keys or TLS certificates;
+  // those require a different storage model (file-backed, streaming) rather
+  // than a single contiguous sodium_malloc buffer.
   constexpr std::size_t kMaxSecretBytes = 256;
   constexpr std::size_t kSaltBytes      = crypto_pwhash_SALTBYTES;
 
@@ -496,6 +512,24 @@ bool entry_delete(PrimaryTable& table, const Uuid& uuid) {
     throw std::invalid_argument("UUID must not be empty");
   }
   return table.erase(uuid) > 0;
+}
+
+// ============================================================================
+// Metadata helpers
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// touch_last_used
+// ----------------------------------------------------------------------------
+// Updates the last_used_at timestamp for the entry with the given UUID.
+// Returns false if the UUID does not exist. This centralizes the "touch"
+// pattern used by cmd_get and cmd_copy so the mutation is not duplicated
+// across command handlers.
+bool touch_last_used(PrimaryTable& table, const Uuid& uuid) {
+  auto it = table.find(uuid);
+  if (it == table.end()) { return false; }
+  it->second.metadata.last_used_at = std::chrono::system_clock::now();
+  return true;
 }
 
 // ============================================================================
@@ -612,7 +646,7 @@ void cmd_get(PrimaryTable& table) {
     std::cout << "Error: no entry found for UUID '" << uuid << "'.\n";
     return;
   }
-  table.at(uuid).metadata.last_used_at = std::chrono::system_clock::now();
+  touch_last_used(table, uuid);
   print_entry(uuid, *entry);
 }
 
@@ -659,7 +693,7 @@ void cmd_copy(PrimaryTable& table) {
     std::cout << "Error: no entry found for UUID '" << uuid << "'.\n";
     return;
   }
-  table.at(uuid).metadata.last_used_at = std::chrono::system_clock::now();
+  touch_last_used(table, uuid);
   clipboard_copy_secret(*entry);
 }
 

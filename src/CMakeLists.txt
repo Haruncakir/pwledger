@@ -15,23 +15,29 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-add_library(pwledger_core STATIC
-  # .cc files in src
-)
+# pwledger_core is currently header-only (Secret.h, TerminalManager.h).
+# INTERFACE is used instead of STATIC because there are no compiled .cc files;
+# the library exists to propagate include paths and the libsodium link
+# dependency to downstream targets (pwledger-cli, pwledger-host, tests).
+#
+# When compiled source files are added to the core library (e.g., a persistence
+# layer or crypto wrappers), change INTERFACE back to STATIC and move the
+# INTERFACE keywords below to PUBLIC.
+add_library(pwledger_core INTERFACE)
 
-# Tell the library where its public headers are. 
-# The generator expression ensures apps linking to this library 
-# automatically get the right include path.
+# Tell downstream targets where the public headers are.
+# The generator expression ensures both in-tree builds and installed packages
+# get the correct include path automatically.
 target_include_directories(pwledger_core
-    PUBLIC 
+    INTERFACE
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
 
-# Link libsodium to the core library
+# Link libsodium to the core library. Downstream targets that link
+# pwledger_core will transitively receive the libsodium dependency.
 if(TARGET Sodium::Sodium)
-    target_link_libraries(pwledger_core PRIVATE Sodium::Sodium)
+    target_link_libraries(pwledger_core INTERFACE Sodium::Sodium)
 else()
-    target_link_libraries(pwledger_core PRIVATE sodium)
+    target_link_libraries(pwledger_core INTERFACE sodium)
 endif()
-
