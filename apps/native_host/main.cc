@@ -16,6 +16,11 @@
  * SOFTWARE.
  */
 
+#include <pwledger/Clipboard.h>
+#include <pwledger/PrimaryTable.h>
+#include <pwledger/ProcessHardening.h>
+#include <pwledger/Secret.h>
+
 // ============================================================================
 // DESIGN NOTES
 // ============================================================================
@@ -65,6 +70,14 @@
 // ============================================================================
 
 int main() {
+  // Apply the same process hardening as the CLI before touching any secrets.
+  pwledger::harden_process();
+
+  // sodium_init must be called once before any Secret is constructed.
+  if (sodium_init() < 0) {
+    return 1;
+  }
+
   // Stub: native messaging host not yet implemented.
   // See DESIGN NOTES above for the planned architecture.
   return 0;

@@ -16,8 +16,12 @@
  * SOFTWARE.
  */
 
+#include <pwledger/Clipboard.h>
+#include <pwledger/PrimaryTable.h>
+#include <pwledger/ProcessHardening.h>
 #include <pwledger/Secret.h>
 #include <pwledger/TerminalManager.h>
+#include <pwledger/uuid.h>
 
 #include <chrono>
 #include <cstring>
@@ -30,18 +34,17 @@
 #include <string_view>
 #include <unordered_map>
 
-#ifdef __linux__
-#  include <sys/prctl.h>
-#  include <sys/resource.h>
-#endif
-
 // ============================================================================
 // DESIGN NOTES
 // ============================================================================
 //
 // This file is the application entry point for pwledger, a CLI password
-// manager. It owns the top-level data model, the interactive command loop,
-// and all I/O that touches sensitive material.
+// manager. It owns the interactive command loop and all I/O that touches
+// sensitive material.
+//
+// The data model (EntryMetadata, EntrySecurityPolicy, SecretEntry,
+// PrimaryTable) lives in include/pwledger/ so it can be shared with the
+// native messaging host (apps/native_host/main.cc).
 //
 // PERSISTENCE
 // -----------
@@ -50,14 +53,6 @@
 // TODO(#issue-N): implement encrypted persistence layer (e.g., serialize
 // PrimaryTable to a file encrypted with a master key derived from the
 // master password via Argon2id).
-//
-// CLIPBOARD
-// ---------
-// Clipboard write is implemented as a best-effort clear-after-use strategy.
-// The secret is written to the clipboard and the user is prompted to run
-// 'clip-clear' when done.
-// TODO(#issue-N): enforce a configurable auto-clear timeout via a background
-// thread or platform-specific timer once the threading model is established.
 //
 // MASTER PASSWORD & ENCRYPTION
 // -----------------------------
@@ -75,222 +70,10 @@
 //
 // ============================================================================
 
-// ----------------------------------------------------------------------------
-// Uuid
-// ----------------------------------------------------------------------------
-// TODO(#issue-N): replace with a proper fixed-width UUID type (e.g., a
-// 16-byte array wrapper with formatted output) once the identity layer is
-// defined. A heap-allocated string is used as a placeholder; UUIDs must not
-// be heap-allocated strings in the hot path of an unordered_map lookup in
-// the final implementation.
-using Uuid = std::string;
+// Convenience alias used throughout this file.
+using Uuid = pwledger::Uuid;
 
 namespace pwledger {
-
-// ============================================================================
-// Data model
-// ============================================================================
-
-// ----------------------------------------------------------------------------
-// EntryMetadata
-// ----------------------------------------------------------------------------
-// Lifecycle timestamps for a stored credential. All fields use system_clock
-// so that timestamps are comparable and serializable to wall-clock time.
-struct EntryMetadata {
-  std::chrono::system_clock::time_point created_at;
-  std::chrono::system_clock::time_point last_modified_at;
-  std::chrono::system_clock::time_point last_used_at;
-};
-
-// ----------------------------------------------------------------------------
-// EntrySecurityPolicy
-// ----------------------------------------------------------------------------
-// Security attributes and policy constraints for a stored credential.
-//
-// strength_score:  Estimated bit-strength of the plaintext secret (e.g.,
-//                  from zxcvbn or a similar estimator). 0 means not yet
-//                  evaluated. Consider a newtype wrapper if invariants
-//                  (non-negative, bounded range) need enforcement.
-// reuse_count:     Number of other entries sharing an identical secret.
-//                  Populated by a background audit pass; used to surface
-//                  reuse warnings in the UI.
-// two_fa_enabled:  Whether a second factor is associated with this entry.
-// expires_at:      Optional expiry deadline. nullopt means no expiry policy.
-// note:            Free-form user annotation. Stored in plaintext; treat as
-//                  non-sensitive. If notes may contain sensitive content,
-//                  migrate this field to a Secret.
-struct EntrySecurityPolicy {
-  int                                                  strength_score = 0;
-  int                                                  reuse_count    = 0;
-  bool                                                 two_fa_enabled = false;
-  std::optional<std::chrono::system_clock::time_point> expires_at;
-  std::string                                          note;
-};
-
-// ----------------------------------------------------------------------------
-// SecretEntry
-// ----------------------------------------------------------------------------
-// A single stored credential. The plaintext secret and its derivation salt
-// are held in sodium-hardened memory via Secret, which zeroes and frees them
-// on destruction. All other fields are non-sensitive metadata and may live
-// in ordinary heap memory.
-//
-// SecretEntry is move-only because Secret is move-only. The destructor is
-// compiler-generated: Secret::~Secret() already calls sodium_free, which
-// zeroes and releases the hardened allocation.
-struct SecretEntry {
-  std::string         primary_key;
-  std::string         username_or_email;
-  Secret              plaintext_secret;
-  Secret              salt;
-  EntryMetadata       metadata;
-  EntrySecurityPolicy security_policy;
-
-  // Explicit constructor required because Secret has no default constructor.
-  // secret_size and salt_size are the byte lengths of the respective buffers.
-  SecretEntry(std::string  pk,
-              std::string  user,
-              std::size_t  secret_size,
-              std::size_t  salt_size)
-    : primary_key(std::move(pk)),
-      username_or_email(std::move(user)),
-      plaintext_secret(secret_size),
-      salt(salt_size),
-      metadata{
-        std::chrono::system_clock::now(),
-        std::chrono::system_clock::now(),
-        std::chrono::system_clock::now()
-      }
-  {}
-
-  ~SecretEntry()                             = default;
-  SecretEntry(SecretEntry&&)                 = default;
-  SecretEntry& operator=(SecretEntry&&)      = default;
-  SecretEntry(const SecretEntry&)            = delete;
-  SecretEntry& operator=(const SecretEntry&) = delete;
-};
-
-// ----------------------------------------------------------------------------
-// PrimaryTable
-// ----------------------------------------------------------------------------
-// The top-level credential store: a map from UUID to SecretEntry.
-// unordered_map provides O(1) average lookup by UUID. If ordered iteration
-// or range queries are needed, std::map<Uuid, SecretEntry> is the alternative.
-//
-// SecretEntry is move-only; insertions use std::move or emplace.
-using PrimaryTable = std::unordered_map<Uuid, SecretEntry>;
-
-// ============================================================================
-// Platform utilities
-// ============================================================================
-
-// ----------------------------------------------------------------------------
-// harden_process
-// ----------------------------------------------------------------------------
-// Best-effort process hardening applied once at startup, before any Secret
-// is constructed. These mitigations reduce the risk of sensitive data leaking
-// through core dumps or debugger attachment. They are not a substitute for
-// OS-level hardening (seccomp, AppArmor, SELinux) but serve as a first layer
-// for a CLI application.
-//
-// None of these calls are fatal on failure; a system that disallows them
-// (e.g., a container with limited capabilities) should still run normally.
-void harden_process() noexcept {
-#ifdef __linux__
-  // Prevent core dumps from capturing in-memory secrets.
-  // Must be called before any Secret is constructed (see Secret.h).
-  prctl(PR_SET_DUMPABLE, 0);
-
-  // Belt-and-suspenders: also set the core dump size limit to zero via
-  // setrlimit, which applies even if prctl is overridden by a child process.
-  const struct rlimit no_core{0, 0};
-  setrlimit(RLIMIT_CORE, &no_core);
-#endif
-  // TODO(#issue-N): add macOS Hardened Runtime check and Windows
-  // IsDebuggerPresent mitigation once those platforms are targeted.
-}
-
-// ============================================================================
-// Clipboard management
-// ============================================================================
-
-// Best-effort clipboard write and clear. Failures are logged to stderr but
-// are not fatal: the user can always read the secret from terminal output.
-// Clipboard operations are inherently insecure (other processes can read the
-// clipboard); this is a usability concession.
-//
-// TODO(#issue-N): enforce auto-clear after a configurable timeout.
-
-namespace detail {
-
-void clipboard_write(std::string_view text) {
-#if defined(__linux__)
-  // Use xclip if available, fall back to xsel. Both read from stdin.
-  FILE* pipe = popen("xclip -selection clipboard 2>/dev/null || "
-                     "xsel --clipboard --input 2>/dev/null", "w");
-  if (!pipe) {
-    std::cerr << "Warning: clipboard write failed "
-                 "(xclip or xsel not found)\n";
-    return;
-  }
-  fwrite(text.data(), 1, text.size(), pipe);
-  pclose(pipe);
-#elif defined(__APPLE__)
-  FILE* pipe = popen("pbcopy", "w");
-  if (!pipe) {
-    std::cerr << "Warning: clipboard write failed (pbcopy unavailable)\n";
-    return;
-  }
-  fwrite(text.data(), 1, text.size(), pipe);
-  pclose(pipe);
-#elif defined(_WIN32)
-  if (!OpenClipboard(nullptr)) {
-    std::cerr << "Warning: clipboard write failed (OpenClipboard)\n";
-    return;
-  }
-  EmptyClipboard();
-  // Allocate global memory for the text (+1 for null terminator).
-  HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, text.size() + 1);
-  if (!hMem) {
-    CloseClipboard();
-    std::cerr << "Warning: clipboard write failed (GlobalAlloc)\n";
-    return;
-  }
-  char* dst = static_cast<char*>(GlobalLock(hMem));
-  std::memcpy(dst, text.data(), text.size());
-  dst[text.size()] = '\0';
-  GlobalUnlock(hMem);
-  SetClipboardData(CF_TEXT, hMem);
-  CloseClipboard();
-#else
-  (void)text;
-  std::cerr << "Warning: clipboard write not supported on this platform\n";
-#endif
-}
-
-void clipboard_clear() {
-#if defined(__linux__)
-  FILE* pipe = popen("xclip -selection clipboard 2>/dev/null || "
-                     "xsel --clipboard --input 2>/dev/null", "w");
-  if (pipe) {
-    fwrite("", 1, 0, pipe);
-    pclose(pipe);
-  }
-#elif defined(__APPLE__)
-  FILE* pipe = popen("pbcopy", "w");
-  if (pipe) {
-    fwrite("", 1, 0, pipe);
-    pclose(pipe);
-  }
-#elif defined(_WIN32)
-  if (OpenClipboard(nullptr)) {
-    EmptyClipboard();
-    CloseClipboard();
-  }
-#endif
-}
-
-}  // namespace detail
 
 // ============================================================================
 // I/O helpers
@@ -533,34 +316,6 @@ bool touch_last_used(PrimaryTable& table, const Uuid& uuid) {
 }
 
 // ============================================================================
-// Clipboard operations
-// ============================================================================
-
-// ----------------------------------------------------------------------------
-// clipboard_copy_secret
-// ----------------------------------------------------------------------------
-// Copies the entry's secret to the clipboard via a scoped read guard.
-// The actual secret length is determined from the null terminator written
-// by read_secret_from_stdin rather than from the full buffer allocation.
-void clipboard_copy_secret(const SecretEntry& entry) {
-  entry.plaintext_secret.with_read_access([](std::span<const char> buf) {
-    std::size_t len = ::strnlen(buf.data(), buf.size());
-    detail::clipboard_write(std::string_view(buf.data(), len));
-  });
-  std::cout << "Secret copied to clipboard. "
-               "Run 'clip-clear' when done.\n";
-}
-
-// ----------------------------------------------------------------------------
-// clipboard_clear_secret
-// ----------------------------------------------------------------------------
-// Overwrites the clipboard with an empty string.
-void clipboard_clear_secret() {
-  detail::clipboard_clear();
-  std::cout << "Clipboard cleared.\n";
-}
-
-// ============================================================================
 // Display helpers
 // ============================================================================
 
@@ -624,48 +379,66 @@ void print_table(const PrimaryTable& table) {
 // Exceptions thrown by CRUD operations are caught in run_command_loop and
 // reported to the user without terminating the session.
 
+// ----------------------------------------------------------------------------
+// parse_uuid_input
+// ----------------------------------------------------------------------------
+// Reads a UUID string from stdin and parses it into a Uuid. Returns
+// std::nullopt and prints an error if the input is not a valid UUID.
+std::optional<Uuid> parse_uuid_input() {
+  std::string input;
+  std::cout << "UUID: "; std::getline(std::cin, input);
+
+  auto uuid = Uuid::from_string(input);
+  if (!uuid) {
+    std::cout << "Error: '" << input << "' is not a valid UUID.\n";
+  }
+  return uuid;
+}
+
 void cmd_add(PrimaryTable& table) {
-  std::string uuid, key, user;
-  std::cout << "UUID          : "; std::getline(std::cin, uuid);
+  std::string key, user;
   std::cout << "Primary key   : "; std::getline(std::cin, key);
   std::cout << "Username/email: "; std::getline(std::cin, user);
 
+  // Auto-generate a UUID-v4 for the new entry.
+  Uuid uuid = Uuid::generate();
+
   if (entry_create(table, uuid, std::move(key), std::move(user))) {
-    std::cout << "Entry added.\n";
+    std::cout << "Entry added (UUID: " << uuid << ").\n";
   } else {
-    std::cout << "Error: an entry with that UUID already exists.\n";
+    std::cout << "Error: UUID collision (astronomically unlikely).\n";
   }
 }
 
 void cmd_get(PrimaryTable& table) {
-  std::string uuid;
-  std::cout << "UUID: "; std::getline(std::cin, uuid);
+  auto uuid = parse_uuid_input();
+  if (!uuid) { return; }
 
-  const SecretEntry* entry = entry_read(table, uuid);
+  const SecretEntry* entry = entry_read(table, *uuid);
   if (!entry) {
-    std::cout << "Error: no entry found for UUID '" << uuid << "'.\n";
+    std::cout << "Error: no entry found for UUID '" << *uuid << "'.\n";
     return;
   }
-  touch_last_used(table, uuid);
-  print_entry(uuid, *entry);
+  touch_last_used(table, *uuid);
+  print_entry(*uuid, *entry);
 }
 
 void cmd_update(PrimaryTable& table) {
-  std::string uuid;
-  std::cout << "UUID: "; std::getline(std::cin, uuid);
+  auto uuid = parse_uuid_input();
+  if (!uuid) { return; }
 
-  if (entry_update_secret(table, uuid)) {
+  if (entry_update_secret(table, *uuid)) {
     std::cout << "Secret updated.\n";
   } else {
-    std::cout << "Error: no entry found for UUID '" << uuid << "'.\n";
+    std::cout << "Error: no entry found for UUID '" << *uuid << "'.\n";
   }
 }
 
 void cmd_delete(PrimaryTable& table) {
-  std::string uuid;
-  std::cout << "UUID: "; std::getline(std::cin, uuid);
+  auto uuid = parse_uuid_input();
+  if (!uuid) { return; }
 
-  std::cout << "Delete entry '" << uuid << "'? [y/N]: ";
+  std::cout << "Delete entry '" << *uuid << "'? [y/N]: ";
   std::string confirm;
   std::getline(std::cin, confirm);
   if (confirm != "y" && confirm != "Y") {
@@ -673,10 +446,10 @@ void cmd_delete(PrimaryTable& table) {
     return;
   }
 
-  if (entry_delete(table, uuid)) {
+  if (entry_delete(table, *uuid)) {
     std::cout << "Entry deleted.\n";
   } else {
-    std::cout << "Error: no entry found for UUID '" << uuid << "'.\n";
+    std::cout << "Error: no entry found for UUID '" << *uuid << "'.\n";
   }
 }
 
@@ -685,15 +458,15 @@ void cmd_list(PrimaryTable& table) {
 }
 
 void cmd_copy(PrimaryTable& table) {
-  std::string uuid;
-  std::cout << "UUID: "; std::getline(std::cin, uuid);
+  auto uuid = parse_uuid_input();
+  if (!uuid) { return; }
 
-  const SecretEntry* entry = entry_read(table, uuid);
+  const SecretEntry* entry = entry_read(table, *uuid);
   if (!entry) {
-    std::cout << "Error: no entry found for UUID '" << uuid << "'.\n";
+    std::cout << "Error: no entry found for UUID '" << *uuid << "'.\n";
     return;
   }
-  touch_last_used(table, uuid);
+  touch_last_used(table, *uuid);
   clipboard_copy_secret(*entry);
 }
 
