@@ -20,54 +20,42 @@
 #include <pwledger/PrimaryTable.h>
 #include <pwledger/ProcessHardening.h>
 #include <pwledger/Secret.h>
+#include <pwledger/VaultIO.h>
+#include <pwledger/VaultPath.h>
 
-// ============================================================================
-// DESIGN NOTES
-// ============================================================================
-//
-// This file will become the native messaging host for the pwledger browser
-// extension. Native messaging is the standard mechanism for browser
-// extensions (Chrome, Firefox, Edge) to communicate with a local application
-// over stdin/stdout using length-prefixed JSON messages.
-//
-// ARCHITECTURE (PLANNED)
-// ----------------------
-//
-//   Browser extension  <-->  Native Messaging Host  <-->  pwledger core
-//   (JavaScript)             (this binary)               (Secret, PrimaryTable)
-//
-// The host process is launched by the browser on demand (one instance per
-// browser profile). Communication follows the WebExtensions native messaging
-// protocol:
-//   1. The browser sends a 4-byte little-endian message length, followed by
-//      the JSON payload.
-//   2. The host reads the message, processes the request, and responds in
-//      the same format.
-//   3. When the extension disconnects, stdin reaches EOF and the host exits.
-//
-// SECURITY CONSIDERATIONS
-// -----------------------
-// - The host must validate the browser's origin via the native messaging
-//   manifest's "allowed_origins" field (set during installation).
-// - All secret material stays in sodium-hardened memory; the host never
-//   sends plaintext secrets to the extension. Instead, it fills form fields
-//   directly or copies to the clipboard with a timed auto-clear.
-// - The host must inherit the same process-hardening measures as the CLI
-//   (harden_process, no core dumps, no debugger attachment).
-//
-// REGISTRATION
-// ------------
-// A JSON manifest file must be installed at a browser-specific location to
-// register this binary:
-//   Chrome (Linux): ~/.config/google-chrome/NativeMessagingHosts/
-//   Firefox (Linux): ~/.mozilla/native-messaging-hosts/
-//   Chrome (Windows): HKCU\Software\Google\Chrome\NativeMessagingHosts
-//
-// TODO(#issue-N): implement the stdin/stdout message loop.
-// TODO(#issue-N): implement the JSON request/response protocol.
-// TODO(#issue-N): create the installation script for manifest registration.
-//
-// ============================================================================
+#include <cstdint>
+#include <iostream>
+#include <string>
+
+#include <nlohmann/json.hpp>
+
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
+
+using json = nlohmann::json;
+
+// Native Messaging Protocol read/write
+std::string read_message() {
+  uint32_t length = 0;
+  if (!std::cin.read(reinterpret_cast<char*>(&length), sizeof(length))) {
+    return "";
+  }
+  std::string message(length, '\0');
+  if (!std::cin.read(&message[0], length)) {
+    return "";
+  }
+  return message;
+}
+
+void write_message(const json& msg) {
+  std::string s = msg.dump();
+  uint32_t length = static_cast<uint32_t>(s.length());
+  std::cout.write(reinterpret_cast<const char*>(&length), sizeof(length));
+  std::cout << s;
+  std::cout.flush();
+}
 
 int main() {
   // Apply the same process hardening as the CLI before touching any secrets.
@@ -78,7 +66,107 @@ int main() {
     return 1;
   }
 
-  // Stub: native messaging host not yet implemented.
-  // See DESIGN NOTES above for the planned architecture.
+#ifdef _WIN32
+  _setmode(_fileno(stdin), _O_BINARY);
+  _setmode(_fileno(stdout), _O_BINARY);
+#endif
+
+  pwledger::PrimaryTable table;
+  bool is_unlocked = false;
+
+  while (true) {
+    std::string msg_str = read_message();
+    if (msg_str.empty()) {
+      break;  // EOF or error
+    }
+
+    try {
+      json req = json::parse(msg_str);
+      std::string cmd = req.value("command", "");
+      json response = {{"status", "error"}, {"message", "Unknown command"}};
+
+      if (req.contains("id")) {
+        response["id"] = req["id"];
+      }
+
+      if (cmd == "ping") {
+        response["status"] = "ok";
+        response["is_unlocked"] = is_unlocked;
+      } else if (cmd == "unlock") {
+        std::string password = req.value("password", "");
+        auto vault_path = pwledger::default_vault_path();
+        if (pwledger::VaultIO::vault_exists(vault_path)) {
+          try {
+            table = pwledger::VaultIO::load_vault(vault_path, password);
+            is_unlocked = true;
+            response["status"] = "ok";
+            // Clean up password from memory since json object string can't be well-protected,
+            // but std::string short lifetime and nlohmann json's short lifetime reduces risk.
+          } catch (const std::exception& e) {
+            response["status"] = "error";
+            response["message"] = e.what();
+          }
+        } else {
+          response["status"] = "error";
+          response["message"] = "Vault not found";
+        }
+      } else if (cmd == "lock") {
+        table.clear();
+        is_unlocked = false;
+        response["status"] = "ok";
+      } else if (cmd == "search") {
+        if (!is_unlocked) {
+          response["status"] = "error";
+          response["message"] = "Locked";
+        } else {
+          std::string query = req.value("query", "");
+          json results = json::array();
+          for (const auto& [uuid, entry] : table) {
+            if (query.empty() || entry.primary_key.find(query) != std::string::npos ||
+                entry.username_or_email.find(query) != std::string::npos) {
+              json item = {{"uuid", uuid.to_string()},
+                           {"primary_key", entry.primary_key},
+                           {"username", entry.username_or_email}};
+              results.push_back(item);
+            }
+          }
+          response["status"] = "ok";
+          response["results"] = results;
+        }
+      } else if (cmd == "copy") {
+        if (!is_unlocked) {
+          response["status"] = "error";
+          response["message"] = "Locked";
+        } else {
+          std::string uuid_str = req.value("uuid", "");
+          auto uuid = pwledger::Uuid::from_string(uuid_str);
+          if (uuid) {
+            auto it = table.find(*uuid);
+            if (it != table.end()) {
+              // Extract secret using access guard and apply to clipboard avoiding std::cout.
+              it->second.plaintext_secret.with_read_access([](std::span<const char> buf) {
+                std::size_t len = ::strnlen(buf.data(), buf.size());
+                pwledger::detail::clipboard_write(std::string_view(buf.data(), len));
+              });
+              
+              it->second.metadata.last_used_at = std::chrono::system_clock::now();
+              response["status"] = "ok";
+            } else {
+              response["status"] = "error";
+              response["message"] = "Not found";
+            }
+          } else {
+            response["status"] = "error";
+            response["message"] = "Invalid UUID";
+          }
+        }
+      }
+
+      write_message(response);
+    } catch (const json::parse_error& e) {
+      write_message({{"status", "error"}, {"message", "Invalid JSON"}});
+    }
+  }
+
   return 0;
 }

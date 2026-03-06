@@ -1,0 +1,25 @@
+{
+    "manifest_version": 3,
+    "name": "Password Ledger",
+    "version": "1.0",
+    "description": "Secure password manager using native messaging.",
+    "permissions": [
+        "nativeMessaging",
+        "activeTab",
+        "clipboardWrite"
+    ],
+    "background": {
+        "scripts": [
+            "background.js"
+        ]
+    },
+    "action": {
+        "default_popup": "popup/popup.html"
+    },
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "pwledger@harun.dev",
+            "strict_min_version": "109.0"
+        }
+    }
+}

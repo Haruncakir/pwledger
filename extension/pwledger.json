@@ -1,0 +1,9 @@
+{
+    "name": "pwledger",
+    "description": "Password Ledger Native Host",
+    "path": "/home/harun/Desktop/passwordledger/build/apps/native_host/pwledger-host",
+    "type": "stdio",
+    "allowed_extensions": [
+        "pwledger@harun.dev"
+    ]
+}
