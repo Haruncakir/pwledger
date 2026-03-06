@@ -33,7 +33,7 @@ struct Uuid {
     Uuid id;
 
     std::random_device rd;
-    std::mt19937_64 gen(rd()); // not cryptographically secure
+    std::mt19937_64 gen(rd());  // not cryptographically secure
     std::uniform_int_distribution<std::uint64_t> dist;
 
     uint64_t part1 = dist(gen);
@@ -50,24 +50,21 @@ struct Uuid {
     return id;
   }
 
-  bool operator==(const UUID& other) const noexcept {
-    return bytes == other.bytes;
-  }
+  bool operator==(const UUID& other) const noexcept { return bytes == other.bytes; }
 };
 
-} // namespace pwledger
+}  // namespace pwledger
 
 namespace std {
 // specialize std::hash for pwledger::Uuid
-template<> struct hash<pwledger::Uuid> {
+template <>
+struct hash<pwledger::Uuid> {
   std::size_t operator()(const pwledger::Uuid& uuid) const noexcept {
-    const uint64_t* p =
-      reinterpret_cast<const uint64_t*>(uuid.bytes.data());
+    const uint64_t* p = reinterpret_cast<const uint64_t*>(uuid.bytes.data());
 
-    return std::hash<uint64_t>{}(p[0]) ^
-      (std::hash<uint64_t>{}(p[1]) << 1);
+    return std::hash<uint64_t>{}(p[0]) ^ (std::hash<uint64_t>{}(p[1]) << 1);
   }
 };
-}
+}  // namespace std
 
-#endif // UUID_H
+#endif  // UUID_H

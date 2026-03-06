@@ -21,6 +21,8 @@
 #include <pwledger/ProcessHardening.h>
 #include <pwledger/Secret.h>
 #include <pwledger/TerminalManager.h>
+#include <pwledger/VaultIO.h>
+#include <pwledger/VaultPath.h>
 #include <pwledger/uuid.h>
 
 #include <chrono>
@@ -46,22 +48,10 @@
 // PrimaryTable) lives in include/pwledger/ so it can be shared with the
 // native messaging host (apps/native_host/main.cc).
 //
-// PERSISTENCE
-// -----------
-// The PrimaryTable is currently in-memory only. Persistence (encrypted
-// serialization to disk) is deferred.
-// TODO(#issue-N): implement encrypted persistence layer (e.g., serialize
-// PrimaryTable to a file encrypted with a master key derived from the
-// master password via Argon2id).
-//
-// MASTER PASSWORD & ENCRYPTION
-// -----------------------------
-// The current implementation stores secrets in plaintext sodium-hardened
-// memory for the duration of the session. Encryption at rest (master password
-// → Argon2id KDF → XChaCha20-Poly1305) is deferred pending the persistence
-// layer. The field is named `plaintext_secret` in SecretEntry to make the
-// unencrypted state explicit at every read site.
-// TODO(#issue-N): integrate encryption before any persistence is added.
+// PERSISTENCE & ENCRYPTION
+// ------------------------
+// The PrimaryTable is persisted to disk using Argon2id for KDF and 
+// XChaCha20-Poly1305 for AEAD. The file is saved atomically.
 //
 // THREAD SAFETY
 // -------------
@@ -74,6 +64,13 @@
 using Uuid = pwledger::Uuid;
 
 namespace pwledger {
+
+// State passed to all commands.
+struct AppState {
+  pwledger::PrimaryTable table;
+  pwledger::Secret master_password{1}; // placeholder until initialized
+  std::filesystem::path vault_path;
+};
 
 // ============================================================================
 // I/O helpers
@@ -114,7 +111,9 @@ std::size_t read_secret_from_stdin(Secret& out, std::size_t max_bytes) {
     int ch = 0;
     while (written < max_bytes - 1) {
       ch = std::cin.get();
-      if (ch == EOF || ch == '\n' || ch == '\r') { break; }
+      if (ch == EOF || ch == '\n' || ch == '\r') {
+        break;
+      }
       buf[written++] = static_cast<char>(ch);
     }
     buf[written] = '\0';
@@ -136,15 +135,14 @@ std::size_t read_secret_from_stdin(Secret& out, std::size_t max_bytes) {
 //
 // Comparison is performed with sodium_memcmp (constant-time) to avoid timing
 // side-channels on the confirmation check.
-std::size_t prompt_secret(std::string_view prompt,
-                          Secret&          out,
-                          std::size_t      max_bytes,
-                          bool             confirm = false) {
+std::size_t prompt_secret(std::string_view prompt, Secret& out, std::size_t max_bytes, bool confirm = false) {
   std::cout << prompt << ": ";
   std::cout.flush();
   std::size_t n = read_secret_from_stdin(out, max_bytes);
 
-  if (!confirm) { return n; }
+  if (!confirm) {
+    return n;
+  }
 
   Secret confirm_buf(max_bytes);
   std::cout << "Confirm " << prompt << ": ";
@@ -157,10 +155,8 @@ std::size_t prompt_secret(std::string_view prompt,
   // *same* Secret; distinct Secrets may be opened concurrently.
   bool match = false;
   out.with_read_access([&](std::span<const char> a) {
-    confirm_buf.with_read_access([&](std::span<const char> b) {
-      match = (n == n2) &&
-              (sodium_memcmp(a.data(), b.data(), n) == 0);
-    });
+    confirm_buf.with_read_access(
+        [&](std::span<const char> b) { match = (n == n2) && (sodium_memcmp(a.data(), b.data(), n) == 0); });
   });
   // confirm_buf is destroyed here; sodium_free zeroes its allocation.
 
@@ -171,12 +167,28 @@ std::size_t prompt_secret(std::string_view prompt,
 }
 
 // ----------------------------------------------------------------------------
+// save_vault_safe
+// ----------------------------------------------------------------------------
+// Attempts to save the vault. If it fails, prints the error but does not
+// throw, so the command loop can continue.
+void save_vault_safe(const AppState& state) {
+  try {
+    state.master_password.with_read_access([&](std::span<const char> buf) {
+      std::size_t len = ::strnlen(buf.data(), buf.size());
+      VaultIO::save_vault(state.vault_path, state.table, std::string_view(buf.data(), len));
+    });
+  } catch (const std::exception& e) {
+    std::cerr << "Warning: Failed to save vault: " << e.what() << '\n';
+  }
+}
+
+// ----------------------------------------------------------------------------
 // format_timepoint
 // ----------------------------------------------------------------------------
 // Formats a system_clock time_point as "YYYY-MM-DD HH:MM:SS UTC".
 std::string format_timepoint(std::chrono::system_clock::time_point tp) {
-  std::time_t t  = std::chrono::system_clock::to_time_t(tp);
-  std::tm     tm = {};
+  std::time_t t = std::chrono::system_clock::to_time_t(tp);
+  std::tm tm = {};
 #ifdef _WIN32
   gmtime_s(&tm, &t);
 #else
@@ -209,10 +221,7 @@ std::string format_timepoint(std::chrono::system_clock::time_point tp) {
 //
 // TODO(#issue-N): pass the salt to Argon2id and store the derived key, not
 // the plaintext, once the encryption layer is in place.
-bool entry_create(PrimaryTable& table,
-                  const Uuid&   uuid,
-                  std::string   primary_key,
-                  std::string   username_or_email) {
+bool entry_create(PrimaryTable& table, const Uuid& uuid, std::string primary_key, std::string username_or_email) {
   if (uuid.empty()) {
     throw std::invalid_argument("UUID must not be empty");
   }
@@ -226,16 +235,11 @@ bool entry_create(PrimaryTable& table,
   // those require a different storage model (file-backed, streaming) rather
   // than a single contiguous sodium_malloc buffer.
   constexpr std::size_t kMaxSecretBytes = 256;
-  constexpr std::size_t kSaltBytes      = crypto_pwhash_SALTBYTES;
+  constexpr std::size_t kSaltBytes = crypto_pwhash_SALTBYTES;
 
-  SecretEntry entry(std::move(primary_key),
-                    std::move(username_or_email),
-                    kMaxSecretBytes,
-                    kSaltBytes);
+  SecretEntry entry(std::move(primary_key), std::move(username_or_email), kMaxSecretBytes, kSaltBytes);
 
-  entry.salt.with_write_access([](std::span<char> buf) {
-    randombytes_buf(buf.data(), buf.size());
-  });
+  entry.salt.with_write_access([](std::span<char> buf) { randombytes_buf(buf.data(), buf.size()); });
 
   prompt_secret("New secret for '" + entry.primary_key + "'",
                 entry.plaintext_secret,
@@ -270,7 +274,9 @@ bool entry_update_secret(PrimaryTable& table, const Uuid& uuid) {
     throw std::invalid_argument("UUID must not be empty");
   }
   auto it = table.find(uuid);
-  if (it == table.end()) { return false; }
+  if (it == table.end()) {
+    return false;
+  }
 
   SecretEntry& entry = it->second;
   entry.plaintext_secret.zeroize();
@@ -310,7 +316,9 @@ bool entry_delete(PrimaryTable& table, const Uuid& uuid) {
 // across command handlers.
 bool touch_last_used(PrimaryTable& table, const Uuid& uuid) {
   auto it = table.find(uuid);
-  if (it == table.end()) { return false; }
+  if (it == table.end()) {
+    return false;
+  }
   it->second.metadata.last_used_at = std::chrono::system_clock::now();
   return true;
 }
@@ -327,24 +335,22 @@ bool touch_last_used(PrimaryTable& table, const Uuid& uuid) {
 // non-empty without exposing the content.
 void print_entry(const Uuid& uuid, const SecretEntry& entry) {
   std::size_t secret_len = 0;
-  entry.plaintext_secret.with_read_access([&](std::span<const char> buf) {
-    secret_len = ::strnlen(buf.data(), buf.size());
-  });
+  entry.plaintext_secret.with_read_access(
+      [&](std::span<const char> buf) { secret_len = ::strnlen(buf.data(), buf.size()); });
 
-  std::cout
-    << "UUID            : " << uuid                                            << '\n'
-    << "Primary key     : " << entry.primary_key                               << '\n'
-    << "Username/email  : " << entry.username_or_email                         << '\n'
-    << "Secret length   : " << secret_len << " characters"                     << '\n'
-    << "2FA enabled     : " << (entry.security_policy.two_fa_enabled
-                                 ? "yes" : "no")                               << '\n'
-    << "Strength score  : " << entry.security_policy.strength_score            << '\n'
-    << "Expires         : " << (entry.security_policy.expires_at.has_value()
-                                 ? format_timepoint(*entry.security_policy.expires_at)
-                                 : "never")                                    << '\n'
-    << "Created         : " << format_timepoint(entry.metadata.created_at)     << '\n'
-    << "Last modified   : " << format_timepoint(entry.metadata.last_modified_at) << '\n'
-    << "Last used       : " << format_timepoint(entry.metadata.last_used_at)   << '\n';
+  std::cout << "UUID            : " << uuid << '\n'
+            << "Primary key     : " << entry.primary_key << '\n'
+            << "Username/email  : " << entry.username_or_email << '\n'
+            << "Secret length   : " << secret_len << " characters" << '\n'
+            << "2FA enabled     : " << (entry.security_policy.two_fa_enabled ? "yes" : "no") << '\n'
+            << "Strength score  : " << entry.security_policy.strength_score << '\n'
+            << "Expires         : "
+            << (entry.security_policy.expires_at.has_value() ? format_timepoint(*entry.security_policy.expires_at)
+                                                             : "never")
+            << '\n'
+            << "Created         : " << format_timepoint(entry.metadata.created_at) << '\n'
+            << "Last modified   : " << format_timepoint(entry.metadata.last_modified_at) << '\n'
+            << "Last used       : " << format_timepoint(entry.metadata.last_used_at) << '\n';
 
   if (!entry.security_policy.note.empty()) {
     std::cout << "Note            : " << entry.security_policy.note << '\n';
@@ -386,7 +392,8 @@ void print_table(const PrimaryTable& table) {
 // std::nullopt and prints an error if the input is not a valid UUID.
 std::optional<Uuid> parse_uuid_input() {
   std::string input;
-  std::cout << "UUID: "; std::getline(std::cin, input);
+  std::cout << "UUID: ";
+  std::getline(std::cin, input);
 
   auto uuid = Uuid::from_string(input);
   if (!uuid) {
@@ -395,48 +402,60 @@ std::optional<Uuid> parse_uuid_input() {
   return uuid;
 }
 
-void cmd_add(PrimaryTable& table) {
+void cmd_add(AppState& state) {
   std::string key, user;
-  std::cout << "Primary key   : "; std::getline(std::cin, key);
-  std::cout << "Username/email: "; std::getline(std::cin, user);
+  std::cout << "Primary key   : ";
+  std::getline(std::cin, key);
+  std::cout << "Username/email: ";
+  std::getline(std::cin, user);
 
   // Auto-generate a UUID-v4 for the new entry.
   Uuid uuid = Uuid::generate();
 
-  if (entry_create(table, uuid, std::move(key), std::move(user))) {
+  if (entry_create(state.table, uuid, std::move(key), std::move(user))) {
     std::cout << "Entry added (UUID: " << uuid << ").\n";
+    save_vault_safe(state);
   } else {
     std::cout << "Error: UUID collision (astronomically unlikely).\n";
   }
 }
 
-void cmd_get(PrimaryTable& table) {
+void cmd_get(AppState& state) {
   auto uuid = parse_uuid_input();
-  if (!uuid) { return; }
+  if (!uuid) {
+    return;
+  }
 
-  const SecretEntry* entry = entry_read(table, *uuid);
+  const SecretEntry* entry = entry_read(state.table, *uuid);
   if (!entry) {
     std::cout << "Error: no entry found for UUID '" << *uuid << "'.\n";
     return;
   }
-  touch_last_used(table, *uuid);
+  if (touch_last_used(state.table, *uuid)) {
+    save_vault_safe(state);
+  }
   print_entry(*uuid, *entry);
 }
 
-void cmd_update(PrimaryTable& table) {
+void cmd_update(AppState& state) {
   auto uuid = parse_uuid_input();
-  if (!uuid) { return; }
+  if (!uuid) {
+    return;
+  }
 
-  if (entry_update_secret(table, *uuid)) {
+  if (entry_update_secret(state.table, *uuid)) {
     std::cout << "Secret updated.\n";
+    save_vault_safe(state);
   } else {
     std::cout << "Error: no entry found for UUID '" << *uuid << "'.\n";
   }
 }
 
-void cmd_delete(PrimaryTable& table) {
+void cmd_delete(AppState& state) {
   auto uuid = parse_uuid_input();
-  if (!uuid) { return; }
+  if (!uuid) {
+    return;
+  }
 
   std::cout << "Delete entry '" << *uuid << "'? [y/N]: ";
   std::string confirm;
@@ -446,46 +465,65 @@ void cmd_delete(PrimaryTable& table) {
     return;
   }
 
-  if (entry_delete(table, *uuid)) {
+  if (entry_delete(state.table, *uuid)) {
     std::cout << "Entry deleted.\n";
+    save_vault_safe(state);
   } else {
     std::cout << "Error: no entry found for UUID '" << *uuid << "'.\n";
   }
 }
 
-void cmd_list(PrimaryTable& table) {
-  print_table(table);
+void cmd_list(AppState& state) {
+  print_table(state.table);
 }
 
-void cmd_copy(PrimaryTable& table) {
+void cmd_copy(AppState& state) {
   auto uuid = parse_uuid_input();
-  if (!uuid) { return; }
+  if (!uuid) {
+    return;
+  }
 
-  const SecretEntry* entry = entry_read(table, *uuid);
+  const SecretEntry* entry = entry_read(state.table, *uuid);
   if (!entry) {
     std::cout << "Error: no entry found for UUID '" << *uuid << "'.\n";
     return;
   }
-  touch_last_used(table, *uuid);
+  if (touch_last_used(state.table, *uuid)) {
+    save_vault_safe(state);
+  }
   clipboard_copy_secret(*entry);
 }
 
-void cmd_clip_clear(PrimaryTable& /*table*/) {
+void cmd_clip_clear(AppState& /*state*/) {
   clipboard_clear_secret();
 }
 
-void cmd_help(PrimaryTable& /*table*/) {
-  std::cout
-    << "Commands:\n"
-    << "  add        Add a new entry\n"
-    << "  get        Show an entry\n"
-    << "  update     Update the secret for an entry\n"
-    << "  delete     Delete an entry\n"
-    << "  list       List all entries\n"
-    << "  copy       Copy an entry's secret to the clipboard\n"
-    << "  clip-clear Clear the clipboard\n"
-    << "  help       Show this message\n"
-    << "  quit       Exit\n";
+void cmd_save(AppState& state) {
+  save_vault_safe(state);
+  std::cout << "Vault saved to " << state.vault_path << ".\n";
+}
+
+void cmd_change_master(AppState& state) {
+  Secret new_password(256);
+  prompt_secret("Enter new master password", new_password, 256, /*confirm=*/true);
+  state.master_password = std::move(new_password);
+  save_vault_safe(state);
+  std::cout << "Master password changed and vault re-encrypted.\n";
+}
+
+void cmd_help(AppState& /*state*/) {
+  std::cout << "Commands:\n"
+            << "  add            Add a new entry\n"
+            << "  get            Show an entry\n"
+            << "  update         Update the secret for an entry\n"
+            << "  delete         Delete an entry\n"
+            << "  list           List all entries\n"
+            << "  copy           Copy an entry's secret to the clipboard\n"
+            << "  clip-clear     Clear the clipboard\n"
+            << "  save           Force save the vault to disk\n"
+            << "  change-master  Change the vault master password\n"
+            << "  help           Show this message\n"
+            << "  quit           Exit\n";
 }
 
 // ----------------------------------------------------------------------------
@@ -494,18 +532,21 @@ void cmd_help(PrimaryTable& /*table*/) {
 // Reads command names from stdin and dispatches to the appropriate handler
 // until the user types "quit" or stdin is exhausted (EOF). Exceptions from
 // command handlers are caught and reported without terminating the session.
-void run_command_loop(PrimaryTable& table) {
-  using CommandFn = void (*)(PrimaryTable&);
+// Commands taking AppState can mutate the table and auto-save.
+void run_command_loop(AppState& state) {
+  using CommandFn = void (*)(AppState&);
 
   const std::unordered_map<std::string, CommandFn> dispatch{
-    { "add",        cmd_add        },
-    { "get",        cmd_get        },
-    { "update",     cmd_update     },
-    { "delete",     cmd_delete     },
-    { "list",       cmd_list       },
-    { "copy",       cmd_copy       },
-    { "clip-clear", cmd_clip_clear },
-    { "help",       cmd_help       },
+      {"add", cmd_add},
+      {"get", cmd_get},
+      {"update", cmd_update},
+      {"delete", cmd_delete},
+      {"list", cmd_list},
+      {"copy", cmd_copy},
+      {"clip-clear", cmd_clip_clear},
+      {"save", cmd_save},
+      {"change-master", cmd_change_master},
+      {"help", cmd_help},
   };
 
   std::cout << "pwledger — type 'help' for available commands.\n";
@@ -521,11 +562,15 @@ void run_command_loop(PrimaryTable& table) {
 
     // Trim leading and trailing whitespace.
     const auto first = line.find_first_not_of(" \t\r\n");
-    const auto last  = line.find_last_not_of(" \t\r\n");
-    if (first == std::string::npos) { continue; }
+    const auto last = line.find_last_not_of(" \t\r\n");
+    if (first == std::string::npos) {
+      continue;
+    }
     const std::string cmd = line.substr(first, last - first + 1);
 
-    if (cmd == "quit" || cmd == "exit") { break; }
+    if (cmd == "quit" || cmd == "exit") {
+      break;
+    }
 
     const auto it = dispatch.find(cmd);
     if (it == dispatch.end()) {
@@ -534,7 +579,7 @@ void run_command_loop(PrimaryTable& table) {
     }
 
     try {
-      it->second(table);
+      it->second(state);
     } catch (const std::exception& e) {
       std::cout << "Error: " << e.what() << '\n';
     }
@@ -561,14 +606,54 @@ int main() {
     return 1;
   }
 
-  // TODO(#issue-N): prompt for the master password here, derive a session key
-  // via Argon2id, and use it to decrypt the persisted PrimaryTable from disk.
-  // For now the table is empty and in-memory only.
-  pwledger::PrimaryTable table;
+  pwledger::AppState state;
+  try {
+    pwledger::ensure_vault_dir_exists();
+    state.vault_path = pwledger::default_vault_path();
+  } catch (const std::exception& e) {
+    std::cerr << "Fatal: Failed to create vault directory: " << e.what() << '\n';
+    return 1;
+  }
 
-  pwledger::run_command_loop(table);
+  if (pwledger::VaultIO::vault_exists(state.vault_path)) {
+    std::cout << "Found existing vault at " << state.vault_path << "\n";
+    bool loaded = false;
+    // Allow up to 3 attempts
+    for (int attempts = 0; attempts < 3; ++attempts) {
+      pwledger::Secret pwd(256);
+      pwledger::prompt_secret("Master password", pwd, 256);
+      try {
+        pwd.with_read_access([&](std::span<const char> buf) {
+          std::size_t len = ::strnlen(buf.data(), buf.size());
+          pwledger::PrimaryTable t = pwledger::VaultIO::load_vault(state.vault_path, std::string_view(buf.data(), len));
+          state.table = std::move(t);
+        });
+        state.master_password = std::move(pwd);
+        loaded = true;
+        std::cout << "Vault loaded successfully (" << state.table.size() << " entries).\n";
+        break;
+      } catch (const std::exception& e) {
+        std::cout << "Failed to decrypt vault: " << e.what() << "\n";
+      }
+    }
+    if (!loaded) {
+      std::cerr << "Fatal: Too many failed decryption attempts.\n";
+      return 1;
+    }
+  } else {
+    std::cout << "No existing vault found at " << state.vault_path << ".\n";
+    std::cout << "Creating a new vault.\n";
+    pwledger::Secret pwd(256);
+    pwledger::prompt_secret("Set master password", pwd, 256, /*confirm=*/true);
+    state.master_password = std::move(pwd);
+    pwledger::save_vault_safe(state);
+    std::cout << "Vault created.\n";
+  }
 
-  // table goes out of scope here. Each SecretEntry destructor calls
+  pwledger::run_command_loop(state);
+
+  // Final save on graceful exit
+  pwledger::save_vault_safe(state);
   // Secret::~Secret, which calls sodium_free, zeroing and releasing every
   // sodium-hardened allocation before the process exits.
   return 0;

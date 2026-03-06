@@ -70,7 +70,8 @@ struct Uuid {
   // Returns true if all 16 bytes are zero (the nil UUID per RFC 4122 §4.1.7).
   bool empty() const noexcept {
     for (std::uint8_t b : bytes) {
-      if (b != 0) return false;
+      if (b != 0)
+        return false;
     }
     return true;
   }
@@ -110,17 +111,19 @@ struct Uuid {
   //   xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
   std::string to_string() const {
     // Byte groups: 4-2-2-2-6, separated by hyphens.
-    constexpr int kGroups[]    = {4, 2, 2, 2, 6};
-    constexpr int kNumGroups   = 5;
+    constexpr int kGroups[] = {4, 2, 2, 2, 6};
+    constexpr int kNumGroups = 5;
 
     std::ostringstream oss;
     oss << std::hex << std::setfill('0');
 
     int byte_index = 0;
     for (int g = 0; g < kNumGroups; ++g) {
-      if (g > 0) { oss << '-'; }
+      if (g > 0) {
+        oss << '-';
+      }
       for (int i = 0; i < kGroups[g]; ++i) {
-        oss << std::setw(2) << static_cast<int>(bytes[byte_index++]);
+        oss << std::setw(2) << static_cast<unsigned int>(bytes[byte_index++]);
       }
     }
     return oss.str();
@@ -135,16 +138,21 @@ struct Uuid {
     std::string hex;
     hex.reserve(32);
     for (char c : str) {
-      if (c == '-') { continue; }
-      if (!is_hex_digit(c)) { return std::nullopt; }
+      if (c == '-') {
+        continue;
+      }
+      if (!is_hex_digit(c)) {
+        return std::nullopt;
+      }
       hex += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
-    if (hex.size() != 32) { return std::nullopt; }
+    if (hex.size() != 32) {
+      return std::nullopt;
+    }
 
     Uuid id;
     for (std::size_t i = 0; i < 16; ++i) {
-      id.bytes[i] = static_cast<std::uint8_t>(
-        (hex_value(hex[i * 2]) << 4) | hex_value(hex[i * 2 + 1]));
+      id.bytes[i] = static_cast<std::uint8_t>((hex_value(hex[i * 2]) << 4) | hex_value(hex[i * 2 + 1]));
     }
     return id;
   }
@@ -153,33 +161,28 @@ struct Uuid {
   // Comparison
   // --------------------------------------------------------------------------
 
-  bool operator==(const Uuid& other) const noexcept {
-    return bytes == other.bytes;
-  }
+  bool operator==(const Uuid& other) const noexcept { return bytes == other.bytes; }
 
-  bool operator!=(const Uuid& other) const noexcept {
-    return bytes != other.bytes;
-  }
+  bool operator!=(const Uuid& other) const noexcept { return bytes != other.bytes; }
 
   // --------------------------------------------------------------------------
   // Stream output
   // --------------------------------------------------------------------------
 
-  friend std::ostream& operator<<(std::ostream& os, const Uuid& uuid) {
-    return os << uuid.to_string();
-  }
+  friend std::ostream& operator<<(std::ostream& os, const Uuid& uuid) { return os << uuid.to_string(); }
 
 private:
   static bool is_hex_digit(char c) noexcept {
-    return (c >= '0' && c <= '9') ||
-           (c >= 'a' && c <= 'f') ||
-           (c >= 'A' && c <= 'F');
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
   }
 
   static int hex_value(char c) noexcept {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
-    if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+    if (c >= '0' && c <= '9')
+      return c - '0';
+    if (c >= 'a' && c <= 'f')
+      return 10 + (c - 'a');
+    if (c >= 'A' && c <= 'F')
+      return 10 + (c - 'A');
     return 0;  // unreachable after is_hex_digit check
   }
 };
@@ -189,13 +192,12 @@ private:
 namespace std {
 // Specialize std::hash for pwledger::Uuid so it can be used as an
 // unordered_map key. The hash combines the two 64-bit halves of the UUID.
-template<> struct hash<pwledger::Uuid> {
+template <>
+struct hash<pwledger::Uuid> {
   std::size_t operator()(const pwledger::Uuid& uuid) const noexcept {
-    const std::uint64_t* p =
-      reinterpret_cast<const std::uint64_t*>(uuid.bytes.data());
+    const std::uint64_t* p = reinterpret_cast<const std::uint64_t*>(uuid.bytes.data());
 
-    return std::hash<std::uint64_t>{}(p[0]) ^
-      (std::hash<std::uint64_t>{}(p[1]) << 1);
+    return std::hash<std::uint64_t>{}(p[0]) ^ (std::hash<std::uint64_t>{}(p[1]) << 1);
   }
 };
 }  // namespace std

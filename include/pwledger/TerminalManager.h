@@ -25,11 +25,11 @@
 #include <type_traits>
 
 #ifdef _WIN32
-#  include <io.h>
-#  include <windows.h>
+#include <io.h>
+#include <windows.h>
 #elif defined(__linux__) || defined(__APPLE__) || defined(__unix__)
-#  include <termios.h>
-#  include <unistd.h>
+#include <termios.h>
+#include <unistd.h>
 #endif
 
 // ============================================================================
@@ -96,14 +96,11 @@ namespace pwledger {
 // would test only syntactic well-formedness, not the truth of the predicate.
 template <typename T>
 concept TerminalManagerDerivable =
-    !std::is_copy_constructible_v<T>  &&
-    !std::is_copy_assignable_v<T>     &&
-    !std::is_move_constructible_v<T>  &&
-    !std::is_move_assignable_v<T>     &&
-    requires(T t, const T ct) {
-        { t.configureTerminal() } -> std::same_as<void>;
-        { t.restore()           } -> std::same_as<void>;
-        { ct.isConfigured()     } -> std::same_as<bool>;
+    !std::is_copy_constructible_v<T> && !std::is_copy_assignable_v<T> && !std::is_move_constructible_v<T> &&
+    !std::is_move_assignable_v<T> && requires(T t, const T ct) {
+      { t.configureTerminal() } -> std::same_as<void>;
+      { t.restore() } -> std::same_as<void>;
+      { ct.isConfigured() } -> std::same_as<bool>;
     };
 
 // ----------------------------------------------------------------------------
@@ -128,7 +125,7 @@ concept TerminalManagerDerivable =
 // the detail namespace enforce this at compile time.
 template <typename Derived>
 struct TerminalManager {
-  TerminalManager()  = default;
+  TerminalManager() = default;
 
   // Trivial. restore() is intentionally NOT called here.
   // See "RAII GUARANTEE" in the file header.
@@ -137,10 +134,10 @@ struct TerminalManager {
   // Terminal attributes are process-global state. Two live managers would
   // produce conflicting saves and restores of the same underlying settings.
   // Derived classes inherit these deletions and need not re-declare them.
-  TerminalManager(const TerminalManager&)            = delete;
-  TerminalManager(TerminalManager&&)                 = delete;
+  TerminalManager(const TerminalManager&) = delete;
+  TerminalManager(TerminalManager&&) = delete;
   TerminalManager& operator=(const TerminalManager&) = delete;
-  TerminalManager& operator=(TerminalManager&&)      = delete;
+  TerminalManager& operator=(TerminalManager&&) = delete;
 };
 
 // ----------------------------------------------------------------------------
@@ -203,8 +200,7 @@ public:
       // A restore failure is logged but not treated as fatal.
       // TODO(#issue-N): replace with structured logging once available.
       if (!SetConsoleMode(hStdin_, originalMode_)) {
-        std::cerr << "Warning: Failed to restore console mode (error "
-                  << GetLastError() << ")\n";
+        std::cerr << "Warning: Failed to restore console mode (error " << GetLastError() << ")\n";
       }
       modeChanged_ = false;
     }
@@ -214,9 +210,9 @@ private:
   // Members are in-class initialized to safe sentinel values so that
   // restore() is always safe to call, even if configureTerminal() throws
   // before reaching its assignments.
-  HANDLE hStdin_       = INVALID_HANDLE_VALUE;
-  DWORD  originalMode_ = 0;
-  bool   modeChanged_  = false;
+  HANDLE hStdin_ = INVALID_HANDLE_VALUE;
+  DWORD originalMode_ = 0;
+  bool modeChanged_ = false;
 };
 
 static_assert(TerminalManagerDerivable<WinTerminalManager>,
@@ -257,7 +253,7 @@ public:
 
     // VMIN=1 / VTIME=0: read() blocks until exactly 1 byte is available,
     // then returns immediately with no timeout.
-    newSettings.c_cc[VMIN]  = 1;
+    newSettings.c_cc[VMIN] = 1;
     newSettings.c_cc[VTIME] = 0;
 
     if (tcsetattr(STDIN_FILENO, TCSANOW, &newSettings) != 0) {
@@ -291,7 +287,7 @@ public:
 private:
   // Zero-initialized; safe sentinel for restore() on partial construction.
   struct termios originalSettings_ {};
-  bool           settingsChanged_  = false;
+  bool settingsChanged_ = false;
 };
 
 static_assert(TerminalManagerDerivable<UnixTerminalManager>,

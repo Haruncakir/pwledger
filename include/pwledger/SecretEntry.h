@@ -40,34 +40,27 @@ namespace pwledger {
 // compiler-generated: Secret::~Secret() already calls sodium_free, which
 // zeroes and releases the hardened allocation.
 struct SecretEntry {
-  std::string         primary_key;
-  std::string         username_or_email;
-  Secret              plaintext_secret;
-  Secret              salt;
-  EntryMetadata       metadata;
+  std::string primary_key;
+  std::string username_or_email;
+  Secret plaintext_secret;
+  Secret salt;
+  EntryMetadata metadata;
   EntrySecurityPolicy security_policy;
 
   // Explicit constructor required because Secret has no default constructor.
   // secret_size and salt_size are the byte lengths of the respective buffers.
-  SecretEntry(std::string  pk,
-              std::string  user,
-              std::size_t  secret_size,
-              std::size_t  salt_size)
-    : primary_key(std::move(pk)),
-      username_or_email(std::move(user)),
-      plaintext_secret(secret_size),
-      salt(salt_size),
-      metadata{
-        std::chrono::system_clock::now(),
-        std::chrono::system_clock::now(),
-        std::chrono::system_clock::now()
-      }
-  {}
+  SecretEntry(std::string pk, std::string user, std::size_t secret_size, std::size_t salt_size)
+      : primary_key(std::move(pk))
+      , username_or_email(std::move(user))
+      , plaintext_secret(secret_size)
+      , salt(salt_size)
+      , metadata{std::chrono::system_clock::now(), std::chrono::system_clock::now(), std::chrono::system_clock::now()} {
+  }
 
-  ~SecretEntry()                             = default;
-  SecretEntry(SecretEntry&&)                 = default;
-  SecretEntry& operator=(SecretEntry&&)      = default;
-  SecretEntry(const SecretEntry&)            = delete;
+  ~SecretEntry() = default;
+  SecretEntry(SecretEntry&&) = default;
+  SecretEntry& operator=(SecretEntry&&) = default;
+  SecretEntry(const SecretEntry&) = delete;
   SecretEntry& operator=(const SecretEntry&) = delete;
 };
 

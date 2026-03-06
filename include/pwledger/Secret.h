@@ -19,11 +19,12 @@
 #ifndef PWLEDGER_SECRET_H
 #define PWLEDGER_SECRET_H
 
+#include <sodium.h>
+
 #include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <span>
-#include <sodium.h>
 
 // ============================================================================
 // DESIGN NOTES
@@ -196,10 +197,7 @@ public:
   // Move transfers ownership. The source is left in a valid but empty state
   // (null pointer, zero size). Any access guard holding a reference to the
   // *source* after a move is a dangling reference (see ACCESS GUARD RULES).
-  Secret(Secret&& other) noexcept
-    : data_(other.data_),
-      size_(other.size_)
-  {
+  Secret(Secret&& other) noexcept : data_(other.data_), size_(other.size_) {
     other.data_ = nullptr;
     other.size_ = 0;
 #ifndef NDEBUG
@@ -241,7 +239,7 @@ public:
   // sharing a pointer (violating single ownership). The rule-of-five requires
   // explicit deletion when a destructor or move operation is user-defined.
   // See: https://en.cppreference.com/w/cpp/language/rule_of_three
-  Secret(const Secret&)            = delete;
+  Secret(const Secret&) = delete;
   Secret& operator=(const Secret&) = delete;
 
   // -- Capacity ---------------------------------------------------------------
@@ -259,9 +257,13 @@ public:
   void zeroize() noexcept {
     if (data_) {
       // Temporarily open for writing; sodium_memzero; re-lock.
-      if (sodium_mprotect_readwrite(data_) != 0) { std::abort(); }
+      if (sodium_mprotect_readwrite(data_) != 0) {
+        std::abort();
+      }
       sodium_memzero(data_, size_);
-      if (sodium_mprotect_noaccess(data_) != 0) { std::abort(); }
+      if (sodium_mprotect_noaccess(data_) != 0) {
+        std::abort();
+      }
     }
   }
 
@@ -290,7 +292,7 @@ public:
   [[nodiscard]] decltype(auto) with_write_access(F&& f);
 
 private:
-  char*       data_ = nullptr; // TODO: std::byte* or std::span<std::byte>
+  char* data_ = nullptr;  // TODO: std::byte* or std::span<std::byte>
   std::size_t size_ = 0;
 
 #ifndef NDEBUG
@@ -304,10 +306,14 @@ private:
   void allocate(std::size_t size) {
     assert(size > 0 && "Secret size must be greater than 0");
     data_ = static_cast<char*>(sodium_malloc(size));
-    if (!data_) { std::abort(); }  // see FAILURE MODEL in file header
+    if (!data_) {
+      std::abort();
+    }  // see FAILURE MODEL in file header
     size_ = size;
     // Buffer starts life locked. Every access must go through a guard.
-    if (sodium_mprotect_noaccess(data_) != 0) { std::abort(); }
+    if (sodium_mprotect_noaccess(data_) != 0) {
+      std::abort();
+    }
   }
 
   // sodium_free internally zeroes the allocation before releasing it.
@@ -371,20 +377,20 @@ public:
     // Re-locking in the destructor must not throw or fail silently.
     // If sodium_mprotect_noaccess fails here, the buffer is permanently
     // unlocked, which is a security violation. Abort.
-    if (sodium_mprotect_noaccess(sec_.data_) != 0) { std::abort(); }
+    if (sodium_mprotect_noaccess(sec_.data_) != 0) {
+      std::abort();
+    }
 #ifndef NDEBUG
     sec_.access_count_.fetch_sub(1, std::memory_order_relaxed);
 #endif
   }
 
-  [[nodiscard]] std::span<const char> get() const noexcept {
-    return {sec_.data_, sec_.size_};
-  }
+  [[nodiscard]] std::span<const char> get() const noexcept { return {sec_.data_, sec_.size_}; }
 
-  Secret_readaccess(const Secret_readaccess&)            = delete;
+  Secret_readaccess(const Secret_readaccess&) = delete;
   Secret_readaccess& operator=(const Secret_readaccess&) = delete;
-  Secret_readaccess(Secret_readaccess&&)                 = delete;
-  Secret_readaccess& operator=(Secret_readaccess&&)      = delete;
+  Secret_readaccess(Secret_readaccess&&) = delete;
+  Secret_readaccess& operator=(Secret_readaccess&&) = delete;
 
 private:
   const Secret& sec_;
@@ -419,20 +425,20 @@ public:
   }
 
   ~Secret_writeaccess() noexcept {
-    if (sodium_mprotect_noaccess(sec_.data_) != 0) { std::abort(); }
+    if (sodium_mprotect_noaccess(sec_.data_) != 0) {
+      std::abort();
+    }
 #ifndef NDEBUG
     sec_.access_count_.fetch_sub(1, std::memory_order_relaxed);
 #endif
   }
 
-  [[nodiscard]] std::span<char> get() noexcept {
-    return {sec_.data_, sec_.size_};
-  }
+  [[nodiscard]] std::span<char> get() noexcept { return {sec_.data_, sec_.size_}; }
 
-  Secret_writeaccess(const Secret_writeaccess&)            = delete;
+  Secret_writeaccess(const Secret_writeaccess&) = delete;
   Secret_writeaccess& operator=(const Secret_writeaccess&) = delete;
-  Secret_writeaccess(Secret_writeaccess&&)                 = delete;
-  Secret_writeaccess& operator=(Secret_writeaccess&&)      = delete;
+  Secret_writeaccess(Secret_writeaccess&&) = delete;
+  Secret_writeaccess& operator=(Secret_writeaccess&&) = delete;
 
 private:
   Secret& sec_;

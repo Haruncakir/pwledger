@@ -73,20 +73,16 @@
 // These are compile-time assertions. If Secret were ever made copyable
 // (accidentally or intentionally), this test file would fail to compile,
 // catching the regression before any runtime test runs.
-static_assert(!std::is_copy_constructible_v<pwledger::Secret>,
-              "Secret must not be copy-constructible");
-static_assert(!std::is_copy_assignable_v<pwledger::Secret>,
-              "Secret must not be copy-assignable");
+static_assert(!std::is_copy_constructible_v<pwledger::Secret>, "Secret must not be copy-constructible");
+static_assert(!std::is_copy_assignable_v<pwledger::Secret>, "Secret must not be copy-assignable");
 
 // ============================================================================
 // Invariant 3: No implicit conversions
 // ============================================================================
 // Secret must never implicitly convert to bool, char*, void*, or std::string.
 // These assertions prevent accidental logging, formatting, or truth-testing.
-static_assert(!std::is_convertible_v<pwledger::Secret, bool>,
-              "Secret must not be implicitly convertible to bool");
-static_assert(!std::is_convertible_v<pwledger::Secret, char*>,
-              "Secret must not be implicitly convertible to char*");
+static_assert(!std::is_convertible_v<pwledger::Secret, bool>, "Secret must not be implicitly convertible to bool");
+static_assert(!std::is_convertible_v<pwledger::Secret, char*>, "Secret must not be implicitly convertible to char*");
 static_assert(!std::is_convertible_v<pwledger::Secret, const char*>,
               "Secret must not be implicitly convertible to const char*");
 static_assert(!std::is_convertible_v<pwledger::Secret, std::string>,
@@ -99,26 +95,34 @@ static_assert(!std::is_convertible_v<pwledger::Secret, std::string>,
 // conflicting saves and restores. These assertions verify the CRTP enforcement.
 static_assert(!std::is_copy_constructible_v<pwledger::TerminalManager_v>,
               "TerminalManager must not be copy-constructible");
-static_assert(!std::is_copy_assignable_v<pwledger::TerminalManager_v>,
-              "TerminalManager must not be copy-assignable");
+static_assert(!std::is_copy_assignable_v<pwledger::TerminalManager_v>, "TerminalManager must not be copy-assignable");
 static_assert(!std::is_move_constructible_v<pwledger::TerminalManager_v>,
               "TerminalManager must not be move-constructible");
-static_assert(!std::is_move_assignable_v<pwledger::TerminalManager_v>,
-              "TerminalManager must not be move-assignable");
+static_assert(!std::is_move_assignable_v<pwledger::TerminalManager_v>, "TerminalManager must not be move-assignable");
 
 
 // ============================================================================
 // Invariant 1: Single ownership — move semantics
 // ============================================================================
 
+class SecretTest : public ::testing::Test {
+protected:
+  static void SetUpTestSuite() {
+    if (sodium_init() < 0) {
+      throw std::runtime_error("libsodium init failed");
+    }
+  }
+};
+
+using SecretDeathTest = SecretTest;
+
 // After a move, the source Secret must be invalidated (size → 0, data → null).
 // Any attempt to use the source after this point is a programmer error, and
 // the debug-build access_count assert will catch it if a guard is opened.
-TEST(SecretTest, move_invalidates_source) {
+TEST_F(SecretTest, move_invalidates_source) {
   pwledger::Secret src(32);
-  src.with_write_access([](std::span<char> buf) {
-    std::memcpy(buf.data(), "secret-material-here-31-bytes!!", buf.size());
-  });
+  src.with_write_access(
+      [](std::span<char> buf) { std::memcpy(buf.data(), "secret-material-here-31-bytes!!", buf.size()); });
 
   pwledger::Secret dst(std::move(src));
 
@@ -128,29 +132,24 @@ TEST(SecretTest, move_invalidates_source) {
 // The destination of a move must contain the exact bytes that were in the
 // source. This verifies that the pointer transfer is correct and the data
 // was not corrupted during the move.
-TEST(SecretTest, move_preserves_data_in_destination) {
+TEST_F(SecretTest, move_preserves_data_in_destination) {
   constexpr std::string_view kMaterial = "secret-material-here-31-bytes!!";
   pwledger::Secret src(kMaterial.size());
-  src.with_write_access([&](std::span<char> buf) {
-    std::memcpy(buf.data(), kMaterial.data(), buf.size());
-  });
+  src.with_write_access([&](std::span<char> buf) { std::memcpy(buf.data(), kMaterial.data(), buf.size()); });
 
   pwledger::Secret dst(std::move(src));
 
-  dst.with_read_access([&](std::span<const char> buf) {
-    ASSERT_EQ(std::string_view(buf.data(), buf.size()), kMaterial);
-  });
+  dst.with_read_access(
+      [&](std::span<const char> buf) { ASSERT_EQ(std::string_view(buf.data(), buf.size()), kMaterial); });
 }
 
 // Move-assignment must free the destination's old allocation (preventing a
 // leak) and then transfer ownership from the source. After the assignment,
 // the source is invalidated and the destination holds the original data.
-TEST(SecretTest, move_assignment_transfers_ownership) {
+TEST_F(SecretTest, move_assignment_transfers_ownership) {
   constexpr std::string_view kMaterial = "assignment-test-data-here!!!!!";
   pwledger::Secret src(kMaterial.size());
-  src.with_write_access([&](std::span<char> buf) {
-    std::memcpy(buf.data(), kMaterial.data(), buf.size());
-  });
+  src.with_write_access([&](std::span<char> buf) { std::memcpy(buf.data(), kMaterial.data(), buf.size()); });
 
   // dst starts with a different-size allocation to verify it's freed.
   pwledger::Secret dst(64);
@@ -158,30 +157,26 @@ TEST(SecretTest, move_assignment_transfers_ownership) {
 
   ASSERT_EQ(src.size(), 0u);
   ASSERT_EQ(dst.size(), kMaterial.size());
-  dst.with_read_access([&](std::span<const char> buf) {
-    ASSERT_EQ(std::string_view(buf.data(), buf.size()), kMaterial);
-  });
+  dst.with_read_access(
+      [&](std::span<const char> buf) { ASSERT_EQ(std::string_view(buf.data(), buf.size()), kMaterial); });
 }
 
 // Self-move-assignment (x = std::move(x)) must be a safe no-op. The C++
 // standard does not require this, but our implementation explicitly checks
 // (this != &other) and returns early. This test ensures that check works
 // correctly and the Secret remains intact.
-TEST(SecretTest, self_move_assignment_is_safe) {
+TEST_F(SecretTest, self_move_assignment_is_safe) {
   constexpr std::string_view kMaterial = "self-move-test-data!!!!!!!!!!!!";
   pwledger::Secret secret(kMaterial.size());
-  secret.with_write_access([&](std::span<char> buf) {
-    std::memcpy(buf.data(), kMaterial.data(), buf.size());
-  });
+  secret.with_write_access([&](std::span<char> buf) { std::memcpy(buf.data(), kMaterial.data(), buf.size()); });
 
   // Suppress the compiler's self-move warning; we intentionally test this.
   pwledger::Secret& ref = secret;
   secret = std::move(ref);
 
   ASSERT_EQ(secret.size(), kMaterial.size());
-  secret.with_read_access([&](std::span<const char> buf) {
-    ASSERT_EQ(std::string_view(buf.data(), buf.size()), kMaterial);
-  });
+  secret.with_read_access(
+      [&](std::span<const char> buf) { ASSERT_EQ(std::string_view(buf.data(), buf.size()), kMaterial); });
 }
 
 // ============================================================================
@@ -190,31 +185,24 @@ TEST(SecretTest, self_move_assignment_is_safe) {
 
 // with_write_access must open the buffer for writing and persist the written
 // data so that a subsequent with_read_access sees the same bytes.
-TEST(SecretTest, write_then_read_access_round_trip) {
+TEST_F(SecretTest, write_then_read_access_round_trip) {
   constexpr std::string_view kMaterial = "roundtrip-verification-data!!!!";
   pwledger::Secret secret(kMaterial.size());
 
-  secret.with_write_access([&](std::span<char> buf) {
-    std::memcpy(buf.data(), kMaterial.data(), buf.size());
-  });
+  secret.with_write_access([&](std::span<char> buf) { std::memcpy(buf.data(), kMaterial.data(), buf.size()); });
 
-  secret.with_read_access([&](std::span<const char> buf) {
-    ASSERT_EQ(std::string_view(buf.data(), buf.size()), kMaterial);
-  });
+  secret.with_read_access(
+      [&](std::span<const char> buf) { ASSERT_EQ(std::string_view(buf.data(), buf.size()), kMaterial); });
 }
 
 // with_read_access must return the value produced by the caller's lambda.
 // The [[nodiscard]] attribute on with_read_access ensures the return value
 // is not silently discarded at the call site.
-TEST(SecretTest, with_read_access_returns_value) {
+TEST_F(SecretTest, with_read_access_returns_value) {
   pwledger::Secret secret(16);
-  secret.with_write_access([](std::span<char> buf) {
-    std::memset(buf.data(), 'X', buf.size());
-  });
+  secret.with_write_access([](std::span<char> buf) { std::memset(buf.data(), 'X', buf.size()); });
 
-  std::size_t len = secret.with_read_access([](std::span<const char> buf) {
-    return buf.size();
-  });
+  std::size_t len = secret.with_read_access([](std::span<const char> buf) { return buf.size(); });
 
   ASSERT_EQ(len, 16u);
 }
@@ -222,12 +210,10 @@ TEST(SecretTest, with_read_access_returns_value) {
 // zeroize() must overwrite all bytes with zeros without freeing or resizing
 // the buffer. After zeroize, the buffer should still be allocated at the
 // same size, but every byte should be 0x00.
-TEST(SecretTest, zeroize_clears_all_bytes) {
+TEST_F(SecretTest, zeroize_clears_all_bytes) {
   constexpr std::size_t kSize = 64;
   pwledger::Secret secret(kSize);
-  secret.with_write_access([](std::span<char> buf) {
-    std::memset(buf.data(), 0xFF, buf.size());
-  });
+  secret.with_write_access([](std::span<char> buf) { std::memset(buf.data(), 0xFF, buf.size()); });
 
   secret.zeroize();
 
@@ -246,7 +232,7 @@ TEST(SecretTest, zeroize_clears_all_bytes) {
 // implementation-defined and a zero-size Secret has no valid use case. This
 // test only runs in debug builds where NDEBUG is not defined.
 #ifndef NDEBUG
-TEST(SecretDeathTest, zero_size_aborts_in_debug) {
+TEST_F(SecretDeathTest, zero_size_aborts_in_debug) {
   ASSERT_DEATH({ pwledger::Secret s(0); }, "");
 }
 #endif

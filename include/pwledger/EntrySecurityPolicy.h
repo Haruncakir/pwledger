@@ -43,11 +43,11 @@ namespace pwledger {
 //                  non-sensitive. If notes may contain sensitive content,
 //                  migrate this field to a Secret.
 struct EntrySecurityPolicy {
-  int                                                  strength_score = 0;
-  int                                                  reuse_count    = 0;
-  bool                                                 two_fa_enabled = false;
+  int strength_score = 0;
+  int reuse_count = 0;
+  bool two_fa_enabled = false;
   std::optional<std::chrono::system_clock::time_point> expires_at;
-  std::string                                          note;
+  std::string note;
 };
 
 }  // namespace pwledger

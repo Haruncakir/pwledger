@@ -20,8 +20,8 @@
 #define PWLEDGER_PROCESSHARDENING_H
 
 #ifdef __linux__
-#  include <sys/prctl.h>
-#  include <sys/resource.h>
+#include <sys/prctl.h>
+#include <sys/resource.h>
 #endif
 
 namespace pwledger {
@@ -45,7 +45,9 @@ inline void harden_process() noexcept {
 
   // Belt-and-suspenders: also set the core dump size limit to zero via
   // setrlimit, which applies even if prctl is overridden by a child process.
-  const struct rlimit no_core{0, 0};
+  const struct rlimit no_core {
+    0, 0
+  };
   setrlimit(RLIMIT_CORE, &no_core);
 #endif
   // TODO(#issue-N): add macOS Hardened Runtime check and Windows

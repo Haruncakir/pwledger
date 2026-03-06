@@ -43,8 +43,10 @@ namespace detail {
 inline void clipboard_write(std::string_view text) {
 #if defined(__linux__)
   // Use xclip if available, fall back to xsel. Both read from stdin.
-  FILE* pipe = popen("xclip -selection clipboard 2>/dev/null || "
-                     "xsel --clipboard --input 2>/dev/null", "w");
+  FILE* pipe = popen(
+      "xclip -selection clipboard 2>/dev/null || "
+      "xsel --clipboard --input 2>/dev/null",
+      "w");
   if (!pipe) {
     std::cerr << "Warning: clipboard write failed "
                  "(xclip or xsel not found)\n";
@@ -87,8 +89,10 @@ inline void clipboard_write(std::string_view text) {
 
 inline void clipboard_clear() {
 #if defined(__linux__)
-  FILE* pipe = popen("xclip -selection clipboard 2>/dev/null || "
-                     "xsel --clipboard --input 2>/dev/null", "w");
+  FILE* pipe = popen(
+      "xclip -selection clipboard 2>/dev/null || "
+      "xsel --clipboard --input 2>/dev/null",
+      "w");
   if (pipe) {
     fwrite("", 1, 0, pipe);
     pclose(pipe);

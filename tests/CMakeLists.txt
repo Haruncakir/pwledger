@@ -39,3 +39,19 @@ target_link_libraries(test_secret
 gtest_discover_tests(test_secret)
 
 # ---------------------------
+
+# Vault storage tests
+# ---------------------------
+add_executable(test_vault
+    test_vault.cc
+)
+
+target_link_libraries(test_vault 
+    PRIVATE 
+        pwledger_core 
+        GTest::gtest_main
+)
+
+gtest_discover_tests(test_vault)
+
+# ---------------------------

@@ -130,6 +130,53 @@ if(PWLEDGER_ENABLE_SANITIZERS AND CMAKE_BUILD_TYPE MATCHES "Debug")
     endif()
 endif()
 
+# Static analysis integration (clang-tidy runs automatically during builds)
+if(PWLEDGER_ENABLE_STATIC_ANALYSIS)
+    find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+    if(CLANG_TIDY_EXE)
+        message(STATUS "Found clang-tidy: ${CLANG_TIDY_EXE}")
+        set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+        set(CMAKE_C_CLANG_TIDY "${CLANG_TIDY_EXE}")
+    else()
+        message(WARNING "PWLEDGER_ENABLE_STATIC_ANALYSIS is ON but clang-tidy was not found")
+    endif()
+endif()
+
+# Code formatting targets (available in all build configurations)
+find_program(CLANG_FORMAT_EXE NAMES clang-format)
+if(CLANG_FORMAT_EXE)
+    message(STATUS "Found clang-format: ${CLANG_FORMAT_EXE}")
+    file(GLOB_RECURSE ALL_SOURCE_FILES
+        ${CMAKE_SOURCE_DIR}/src/*.cc
+        ${CMAKE_SOURCE_DIR}/src/*.cpp
+        ${CMAKE_SOURCE_DIR}/src/*.c
+        ${CMAKE_SOURCE_DIR}/src/*.h
+        ${CMAKE_SOURCE_DIR}/include/*.h
+        ${CMAKE_SOURCE_DIR}/apps/*.cc
+        ${CMAKE_SOURCE_DIR}/apps/*.cpp
+        ${CMAKE_SOURCE_DIR}/apps/*.c
+        ${CMAKE_SOURCE_DIR}/apps/*.h
+        ${CMAKE_SOURCE_DIR}/tests/*.cc
+        ${CMAKE_SOURCE_DIR}/tests/*.cpp
+        ${CMAKE_SOURCE_DIR}/tests/*.c
+        ${CMAKE_SOURCE_DIR}/tests/*.h
+    )
+
+    add_custom_target(format
+        COMMAND ${CLANG_FORMAT_EXE} -i ${ALL_SOURCE_FILES}
+        COMMENT "Running clang-format on all source files"
+        VERBATIM
+    )
+
+    add_custom_target(check-format
+        COMMAND ${CLANG_FORMAT_EXE} --dry-run --Werror ${ALL_SOURCE_FILES}
+        COMMENT "Checking source file formatting with clang-format"
+        VERBATIM
+    )
+else()
+    message(STATUS "clang-format not found - format/check-format targets will not be available")
+endif()
+
 # Memory protection and secure coding practices
 if(PWLEDGER_ENABLE_SECURITY_HARDENING)
     # Ensure sensitive data can be properly cleared from memory
@@ -171,5 +218,6 @@ message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Security Hardening: ${PWLEDGER_ENABLE_SECURITY_HARDENING}")
 message(STATUS "Sanitizers: ${PWLEDGER_ENABLE_SANITIZERS}")
+message(STATUS "Static Analysis: ${PWLEDGER_ENABLE_STATIC_ANALYSIS}")
 message(STATUS "Target Architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 message(STATUS "=====================================")
