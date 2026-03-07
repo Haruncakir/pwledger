@@ -9,7 +9,7 @@ A professional-grade, offline-first password vault built in modern C++20. Secret
 - **Process hardening**: core dump suppression (`prctl`, `setrlimit`), anti-debugger hints
 - **Cross-platform**: Linux, macOS, and Windows (MSVC) support
 - **CLI interface**: interactive CRUD with echo-suppressed input, clipboard integration, and constant-time confirmation
-- **Browser extension** *(planned)*: native messaging host for Chrome/Firefox/Edge
+- **Browser extension**: native messaging host for Firefox
 
 ## Prerequisites
 
@@ -19,6 +19,7 @@ A professional-grade, offline-first password vault built in modern C++20. Secret
 | **C++ compiler** | C++20 (GCC 11+, Clang 14+, MSVC 19.29+) | Language standard |
 | **libsodium** | 1.0.18 | Cryptographic primitives and hardened allocator |
 | **GoogleTest** | *(fetched automatically)* | Test framework |
+| **nlohmann/json** | *(fetched automatically)* | JSON parsing for the native messaging host |
 
 ### Installing libsodium
 
@@ -57,11 +58,34 @@ cd build && ctest --output-on-failure
 
 ## Usage
 
+### CLI
+
 ```bash
 ./build/apps/pwledger-cli
 ```
 
 Available commands: `add`, `get`, `update`, `delete`, `list`, `copy`, `clip-clear`, `help`, `quit`.
+
+### Browser Extension (Firefox)
+
+The repository includes a Firefox browser extension that communicates with the `pwledger-host` native messaging host.
+
+1. **Install Native Host Manifest**
+   ```bash
+   mkdir -p ~/.mozilla/native-messaging-hosts
+   
+   # Update the "path" in extension/pwledger.json to point to your build directory's pwledger-host before copying:
+   # "path": "/home/your_user/path/to/passwordledger/build/apps/native_host/pwledger-host"
+   
+   cp extension/pwledger.json ~/.mozilla/native-messaging-hosts/
+   ```
+
+2. **Load the Extension**
+   - Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
+   - Click **"Load Temporary Add-on..."**
+   - Select `extension/manifest.json` from this repository
+
+The extension can unlock your vault, search entries, and securely copy secrets to your clipboard.
 
 ## Architecture
 
@@ -72,7 +96,7 @@ include/pwledger/
 
 apps/
   cli/main.cc         # CLI entry point, CRUD, clipboard, command loop
-  native_host/main.cc # Browser extension native messaging host (planned)
+  native_host/main.cc # Browser extension native messaging host (Firefox)
 
 src/                  # Core library (header-only for now)
 tests/                # GoogleTest suite
