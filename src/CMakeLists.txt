@@ -23,13 +23,24 @@
 # When compiled source files are added to the core library (e.g., a persistence
 # layer or crypto wrappers), change INTERFACE back to STATIC and move the
 # INTERFACE keywords below to PUBLIC.
-add_library(pwledger_core INTERFACE)
+add_library(pwledger_core STATIC
+    Clipboard.cc
+    ProcessHardening.cc
+    Secret.cc
+    SecretEntry.cc
+    TerminalManager.cc
+    uuid.cc
+    VaultCrypto.cc
+    VaultIO.cc
+    VaultPath.cc
+    VaultSerializer.cc
+)
 
 # Tell downstream targets where the public headers are.
 # The generator expression ensures both in-tree builds and installed packages
 # get the correct include path automatically.
 target_include_directories(pwledger_core
-    INTERFACE
+    PUBLIC
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
@@ -37,7 +48,7 @@ target_include_directories(pwledger_core
 # Link libsodium to the core library. Downstream targets that link
 # pwledger_core will transitively receive the libsodium dependency.
 if(TARGET Sodium::Sodium)
-    target_link_libraries(pwledger_core INTERFACE Sodium::Sodium)
+    target_link_libraries(pwledger_core PUBLIC Sodium::Sodium)
 else()
-    target_link_libraries(pwledger_core INTERFACE sodium)
+    target_link_libraries(pwledger_core PUBLIC sodium)
 endif()

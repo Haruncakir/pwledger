@@ -162,49 +162,14 @@ namespace detail {
 // ----------------------------------------------------------------------------
 class WinTerminalManager : public TerminalManager<WinTerminalManager> {
 public:
-  WinTerminalManager() {
-    configureTerminal();  // throws on failure; see FAILURE MODEL
-  }
+  WinTerminalManager();
+  ~WinTerminalManager() noexcept;
 
-  // restore() is called from this destructor, not the base.
-  // See "RAII GUARANTEE" in the file header.
-  ~WinTerminalManager() noexcept { restore(); }
-
-  void configureTerminal() {
-    hStdin_ = GetStdHandle(STD_INPUT_HANDLE);
-    if (hStdin_ == INVALID_HANDLE_VALUE) {
-      throw std::runtime_error("Failed to get standard input handle");
-    }
-    if (!GetConsoleMode(hStdin_, &originalMode_)) {
-      throw std::runtime_error("Failed to get console mode");
-    }
-
-    // For secure input: disable echo and line input.
-    // ENABLE_ECHO_INPUT: prevents typed characters from appearing on screen.
-    // ENABLE_LINE_INPUT: disables line buffering, allowing immediate character
-    //                    processing without waiting for Enter.
-    // See: https://learn.microsoft.com/en-us/windows/console/setconsolemode
-    DWORD newMode = originalMode_ & ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT);
-    if (!SetConsoleMode(hStdin_, newMode)) {
-      throw std::runtime_error("Failed to set console mode");
-    }
-
-    modeChanged_ = true;
-  }
+  void configureTerminal();
 
   [[nodiscard]] bool isConfigured() const noexcept { return modeChanged_; }
 
-  void restore() noexcept {
-    if (modeChanged_ && hStdin_ != INVALID_HANDLE_VALUE) {
-      // SetConsoleMode is a C API; failures are surfaced via return value.
-      // A restore failure is logged but not treated as fatal.
-      // TODO(#issue-N): replace with structured logging once available.
-      if (!SetConsoleMode(hStdin_, originalMode_)) {
-        std::cerr << "Warning: Failed to restore console mode (error " << GetLastError() << ")\n";
-      }
-      modeChanged_ = false;
-    }
-  }
+  void restore() noexcept;
 
 private:
   // Members are in-class initialized to safe sentinel values so that
@@ -227,62 +192,14 @@ static_assert(TerminalManagerDerivable<WinTerminalManager>,
 // ----------------------------------------------------------------------------
 class UnixTerminalManager : public TerminalManager<UnixTerminalManager> {
 public:
-  UnixTerminalManager() {
-    configureTerminal();  // throws on failure; see FAILURE MODEL
-  }
+  UnixTerminalManager();
+  ~UnixTerminalManager() noexcept;
 
-  // restore() is called from this destructor, not the base.
-  // See "RAII GUARANTEE" in the file header.
-  ~UnixTerminalManager() noexcept { restore(); }
-
-  void configureTerminal() {
-    if (tcgetattr(STDIN_FILENO, &originalSettings_) != 0) {
-      throw std::runtime_error("Failed to get terminal attributes");
-    }
-
-    struct termios newSettings = originalSettings_;
-
-    // Disable echo and canonical mode.
-    // ECHO:   prevents typed characters from appearing on screen.
-    // ICANON: disables line buffering, allowing immediate character processing
-    //         without waiting for Enter.
-    // The explicit cast to tcflag_t suppresses a signedness warning on
-    // platforms where ECHO | ICANON is computed as a signed int.
-    // See: https://www.man7.org/linux/man-pages/man3/termios.3.html
-    newSettings.c_lflag &= ~(static_cast<tcflag_t>(ECHO | ICANON));
-
-    // VMIN=1 / VTIME=0: read() blocks until exactly 1 byte is available,
-    // then returns immediately with no timeout.
-    newSettings.c_cc[VMIN] = 1;
-    newSettings.c_cc[VTIME] = 0;
-
-    if (tcsetattr(STDIN_FILENO, TCSANOW, &newSettings) != 0) {
-      throw std::runtime_error("Failed to set terminal attributes");
-    }
-
-    settingsChanged_ = true;
-  }
+  void configureTerminal();
 
   [[nodiscard]] bool isConfigured() const noexcept { return settingsChanged_; }
 
-  void restore() noexcept {
-    if (settingsChanged_) {
-      // tcsetattr is a C function; failures are surfaced via return value.
-      //
-      // TCSAFLUSH is used rather than TCSANOW: it waits for all pending
-      // output to drain and discards any unread input before applying the
-      // restored settings. This prevents pending keystrokes that were entered
-      // under echo-suppressed settings from being replayed and displayed once
-      // echo is re-enabled.
-      //
-      // A restore failure is logged but not treated as fatal.
-      // TODO(#issue-N): replace with structured logging once available.
-      if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &originalSettings_) != 0) {
-        std::cerr << "Warning: Failed to restore terminal attributes\n";
-      }
-      settingsChanged_ = false;
-    }
-  }
+  void restore() noexcept;
 
 private:
   // Zero-initialized; safe sentinel for restore() on partial construction.

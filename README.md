@@ -68,17 +68,29 @@ Available commands: `add`, `get`, `update`, `delete`, `list`, `copy`, `clip-clea
 
 ### Browser Extension (Firefox)
 
-The repository includes a Firefox browser extension that communicates with the `pwledger-host` native messaging host.
+The repository includes a Firefox browser extension that communicates with the `pwledger-host` native messaging host. Installation requires registering the native host manifest with Firefox, which involves placing the `pwledger.json` file in a specific directory or registry key depending on your Operating System.
+
+First, update the `"path"` inside `extension/pwledger.json` to point your built `pwledger-host` executable. Ensure the executable has run permissions (Linux/macOS/WSL).
+*(e.g., `"path": "/home/user/passwordledger/build/apps/native_host/pwledger-host"` or `"path": "C:\\path\\to\\pwledger-host.exe"`)*
 
 1. **Install Native Host Manifest**
+
+   **Linux / WSL:**
    ```bash
    mkdir -p ~/.mozilla/native-messaging-hosts
-   
-   # Update the "path" in extension/pwledger.json to point to your build directory's pwledger-host before copying:
-   # "path": "/home/your_user/path/to/passwordledger/build/apps/native_host/pwledger-host"
-   
    cp extension/pwledger.json ~/.mozilla/native-messaging-hosts/
    ```
+
+   **macOS:**
+   ```bash
+   mkdir -p ~/Library/Application\ Support/Mozilla/NativeMessagingHosts
+   cp extension/pwledger.json ~/Library/Application\ Support/Mozilla/NativeMessagingHosts/
+   ```
+
+   **Windows:**
+   1. Open the Registry Editor (`regedit`).
+   2. Navigate to `HKEY_CURRENT_USER\SOFTWARE\Mozilla\NativeMessagingHosts\pwledger`. (Create the `NativeMessagingHosts` and `pwledger` keys if they do not exist).
+   3. Set the default value of the `pwledger` key to the absolute path of your modified `pwledger.json` file (e.g., `C:\path\to\passwordledger\extension\pwledger.json`).
 
 2. **Load the Extension**
    - Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
@@ -87,21 +99,6 @@ The repository includes a Firefox browser extension that communicates with the `
 
 The extension can unlock your vault, search entries, and securely copy secrets to your clipboard.
 
-## Architecture
-
-```
-include/pwledger/
-  Secret.h            # RAII container for sensitive byte buffers (sodium_malloc)
-  TerminalManager.h   # Cross-platform echo suppression (CRTP + platform impls)
-
-apps/
-  cli/main.cc         # CLI entry point, CRUD, clipboard, command loop
-  native_host/main.cc # Browser extension native messaging host (Firefox)
-
-src/                  # Core library (header-only for now)
-tests/                # GoogleTest suite
-cmake/                # FindSodium, compiler flag modules
-```
 
 ## Security Model
 

@@ -184,54 +184,22 @@ public:
   // Allocates `size` bytes of sodium-hardened memory and immediately places
   // the buffer in NOACCESS state. Aborts on allocation failure (see FAILURE
   // MODEL in file header).
-  explicit Secret(std::size_t size) { allocate(size); }
+  explicit Secret(std::size_t size);
 
   // -- Destruction ------------------------------------------------------------
   // sodium_free internally calls sodium_memzero before releasing the page,
   // so wipe_and_free() does not need to call sodium_memzero separately.
   // The name "wipe_and_free" is kept to document intent at the call site;
   // the actual zeroing is guaranteed by sodium_free.
-  ~Secret() noexcept { wipe_and_free(); }
+  ~Secret() noexcept;
 
   // -- Move semantics ---------------------------------------------------------
   // Move transfers ownership. The source is left in a valid but empty state
   // (null pointer, zero size). Any access guard holding a reference to the
   // *source* after a move is a dangling reference (see ACCESS GUARD RULES).
-  Secret(Secret&& other) noexcept : data_(other.data_), size_(other.size_) {
-    other.data_ = nullptr;
-    other.size_ = 0;
-#ifndef NDEBUG
-    // The source's access_count should be 0; if it isn't, a guard is alive
-    // concurrently with a move, which is a misuse.
-    assert(other.access_count_.load(std::memory_order_relaxed) == 0 &&
-           "Secret moved while an access guard is still alive");
-    // Reset counter on the moved-to object so it starts clean.
-    access_count_.store(0, std::memory_order_relaxed);
-#endif
-  }
+  Secret(Secret&& other) noexcept;
 
-  Secret& operator=(Secret&& other) noexcept {
-    if (this != &other) {
-#ifndef NDEBUG
-      assert(access_count_.load(std::memory_order_relaxed) == 0 &&
-             "Secret move-assigned while an access guard is still alive (destination)");
-      assert(other.access_count_.load(std::memory_order_relaxed) == 0 &&
-             "Secret moved while an access guard is still alive (source)");
-#endif
-      // sodium_free zeros before freeing, satisfying the wipe requirement.
-      if (data_) {
-        sodium_free(data_);
-      }
-      data_ = other.data_;
-      size_ = other.size_;
-      other.data_ = nullptr;
-      other.size_ = 0;
-#ifndef NDEBUG
-      access_count_.store(0, std::memory_order_relaxed);
-#endif
-    }
-    return *this;
-  }
+  Secret& operator=(Secret&& other) noexcept;
 
   // Copying to/from is not allowed (invariant 1: single ownership).
   // Copies would require either duplicating sodium-allocated memory (expensive,
@@ -254,18 +222,7 @@ public:
   // implication that size() becomes 0.
   //
   // Not thread-safe. Requires external synchronization.
-  void zeroize() noexcept {
-    if (data_) {
-      // Temporarily open for writing; sodium_memzero; re-lock.
-      if (sodium_mprotect_readwrite(data_) != 0) {
-        std::abort();
-      }
-      sodium_memzero(data_, size_);
-      if (sodium_mprotect_noaccess(data_) != 0) {
-        std::abort();
-      }
-    }
-  }
+  void zeroize() noexcept;
 
   // -- Safe scoped access (preferred API) ------------------------------------
   // These methods are the preferred way to access Secret's memory. They open
@@ -303,33 +260,13 @@ private:
   mutable std::atomic<int> access_count_{0};
 #endif
 
-  void allocate(std::size_t size) {
-    assert(size > 0 && "Secret size must be greater than 0");
-    data_ = static_cast<char*>(sodium_malloc(size));
-    if (!data_) {
-      std::abort();
-    }  // see FAILURE MODEL in file header
-    size_ = size;
-    // Buffer starts life locked. Every access must go through a guard.
-    if (sodium_mprotect_noaccess(data_) != 0) {
-      std::abort();
-    }
-  }
+  void allocate(std::size_t size);
 
   // sodium_free internally zeroes the allocation before releasing it.
   // This satisfies the "wipe before free" requirement without an explicit
   // sodium_memzero call. The method is named "wipe_and_free" to document
   // intent; the actual zeroing is done inside sodium_free.
-  void wipe_and_free() noexcept {
-    if (data_) {
-      // sodium_free handles zeroing internally. Do not call sodium_memzero
-      // here; the buffer is in NOACCESS state and an extra mprotect_readwrite
-      // + memzero before sodium_free would be redundant.
-      sodium_free(data_);
-      data_ = nullptr;
-      size_ = 0;
-    }
-  }
+  void wipe_and_free() noexcept;
 };
 
 namespace details {
@@ -355,35 +292,9 @@ namespace details {
 //                // at worst UB if the pointer has been freed in between.
 class Secret_readaccess {
 public:
-  explicit Secret_readaccess(const Secret& s) : sec_(s) {
-#ifndef NDEBUG
-    int prev = s.access_count_.fetch_add(1, std::memory_order_relaxed);
-    assert(prev == 0 &&
-           "Overlapping access guards on the same Secret are undefined behavior. "
-           "See ACCESS GUARD RULES in Secret.h.");
-#endif
-    if (sodium_mprotect_readonly(sec_.data_) != 0) {
-      // mprotect failure means we cannot safely read the secret.
-      // Abort rather than silently continuing with an unlocked buffer or,
-      // worse, continuing with the assumption that the lock is held.
-#ifndef NDEBUG
-      sec_.access_count_.fetch_sub(1, std::memory_order_relaxed);
-#endif
-      std::abort();
-    }
-  }
+  explicit Secret_readaccess(const Secret& s);
 
-  ~Secret_readaccess() noexcept {
-    // Re-locking in the destructor must not throw or fail silently.
-    // If sodium_mprotect_noaccess fails here, the buffer is permanently
-    // unlocked, which is a security violation. Abort.
-    if (sodium_mprotect_noaccess(sec_.data_) != 0) {
-      std::abort();
-    }
-#ifndef NDEBUG
-    sec_.access_count_.fetch_sub(1, std::memory_order_relaxed);
-#endif
-  }
+  ~Secret_readaccess() noexcept;
 
   [[nodiscard]] std::span<const char> get() const noexcept { return {sec_.data_, sec_.size_}; }
 
@@ -409,29 +320,9 @@ private:
 // Copy and move are deleted for the same reasons as Secret_readaccess.
 class Secret_writeaccess {
 public:
-  explicit Secret_writeaccess(Secret& s) : sec_(s) {
-#ifndef NDEBUG
-    int prev = s.access_count_.fetch_add(1, std::memory_order_relaxed);
-    assert(prev == 0 &&
-           "Overlapping access guards on the same Secret are undefined behavior. "
-           "See ACCESS GUARD RULES in Secret.h.");
-#endif
-    if (sodium_mprotect_readwrite(sec_.data_) != 0) {
-#ifndef NDEBUG
-      sec_.access_count_.fetch_sub(1, std::memory_order_relaxed);
-#endif
-      std::abort();
-    }
-  }
+  explicit Secret_writeaccess(Secret& s);
 
-  ~Secret_writeaccess() noexcept {
-    if (sodium_mprotect_noaccess(sec_.data_) != 0) {
-      std::abort();
-    }
-#ifndef NDEBUG
-    sec_.access_count_.fetch_sub(1, std::memory_order_relaxed);
-#endif
-  }
+  ~Secret_writeaccess() noexcept;
 
   [[nodiscard]] std::span<char> get() noexcept { return {sec_.data_, sec_.size_}; }
 
