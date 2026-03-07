@@ -21,6 +21,14 @@ A professional-grade, offline-first password vault built in modern C++20. Secret
   - [Loading the Extension in Firefox](#loading-the-extension-in-firefox)
   - [Verifying the Connection](#verifying-the-connection)
   - [Troubleshooting](#troubleshooting)
+- [Deploying from WSL to Windows](#deploying-from-wsl-to-windows)
+  - [Why a Separate Build is Required](#why-a-separate-build-is-required)
+  - [Step 1 — Install Windows Build Dependencies](#step-1--install-windows-build-dependencies)
+  - [Step 2 — Build the Windows Native Host](#step-2--build-the-windows-native-host)
+  - [Step 3 — Copy the Binary to Windows](#step-3--copy-the-binary-to-windows)
+  - [Step 4 — Register the Manifest and Load the Extension](#step-4--register-the-manifest-and-load-the-extension)
+  - [Dependency Checklist](#dependency-checklist)
+  - [Common Mistakes](#common-mistakes)
 - [Known Limitations](#known-limitations)
 - [Roadmap](#roadmap)
 - [License](#license)
@@ -225,7 +233,7 @@ cp extension/pwledger.json ~/.mozilla/native-messaging-hosts/
 cat ~/.mozilla/native-messaging-hosts/pwledger.json
 ```
 
-On WSL, Firefox runs on the Windows host, not inside WSL. Use the [Windows](#windows) instructions instead, and set the path to the Windows-side binary.
+**WSL users**: Firefox runs on the Windows host, not inside the WSL Linux environment. A Linux ELF binary built inside WSL cannot be executed directly by Windows Firefox. You must build a native Windows executable (`.exe`) and register it with the Windows-side Firefox. See [Deploying from WSL to Windows](#deploying-from-wsl-to-windows) for the full procedure.
 
 #### macOS
 
@@ -340,7 +348,262 @@ The native host writes warnings and errors to stderr. Firefox captures stderr fr
 
 ---
 
-## Known Limitations
+## Deploying from WSL to Windows
+
+This section covers the case where the project is developed and built inside WSL (Windows Subsystem for Linux) and the browser extension's native host needs to run under Windows Firefox.
+
+### Why a Separate Build is Required
+
+WSL provides a Linux kernel environment. Binaries compiled inside WSL are ELF executables targeting the Linux ABI. Windows Firefox spawns native Windows processes via the Win32 API — it cannot execute a Linux ELF binary, even inside WSL 2. This means:
+
+- The `pwledger-host` binary you built inside WSL **cannot** be registered with or launched by Windows Firefox.
+- You need a separate **Windows PE32+ executable** (`.exe`) compiled against the Windows CRT and Win32 APIs.
+- The CLI (`pwledger-cli`) can continue to run inside WSL for development and testing. Only `pwledger-host` needs to be a Windows binary for the browser extension to work.
+
+There are two ways to produce the Windows executable:
+
+| Approach | Toolchain | Where it runs |
+|---|---|---|
+| **Cross-compile inside WSL** | MinGW-w64 (`x86_64-w64-mingw32-g++`) | Build in WSL, output is a `.exe` |
+| **Native Windows build** | MSVC or LLVM/Clang via Visual Studio | Build in a Windows terminal (PowerShell / cmd) |
+
+The cross-compilation approach is more convenient for a WSL-first workflow and is covered in detail below. The native Windows build follows the standard [Building](#building) instructions run from a Windows terminal with MSVC or a Windows CMake/Clang installation.
+
+---
+
+### Step 1 — Install Windows Build Dependencies
+
+#### Inside WSL: cross-compilation with MinGW-w64
+
+Install the MinGW-w64 cross-compiler and CMake inside your WSL distribution:
+
+```bash
+# Ubuntu / Debian
+sudo apt update
+sudo apt install cmake mingw-w64 mingw-w64-tools
+```
+
+Install the Windows build of libsodium. MinGW-w64 requires the MinGW-compatible static or shared library, not the MSVC `.lib`. Download the prebuilt MinGW binaries from the [libsodium releases page](https://download.libsodium.org/libsodium/releases/) — look for a filename of the form `libsodium-X.Y.Z-mingw.tar.gz`.
+
+```bash
+# Example — adjust the version number to the latest release
+wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-mingw.tar.gz
+tar -xf libsodium-1.0.18-mingw.tar.gz
+
+# The archive contains win32 and win64 subdirectories. Use win64 for a
+# 64-bit target (x86_64-w64-mingw32).
+# Note the path — you will pass it to CMake as CMAKE_PREFIX_PATH below.
+ls libsodium-win64/
+```
+
+> **Important**: do not use the `libsodium-dev` package installed via `apt` for the Windows cross-build. That package contains Linux `.so` libraries and Linux headers. The MinGW cross-compiler must link against the MinGW-compatible Windows `.a` / `.dll.a` files from the tarball above.
+
+#### On Windows: native build with MSVC
+
+If you prefer to build natively on Windows, install:
+
+- [Visual Studio 2022](https://visualstudio.microsoft.com/) with the **Desktop development with C++** workload (includes MSVC 19.29+ and CMake)
+- [vcpkg](https://vcpkg.io/) for libsodium: `vcpkg install libsodium:x64-windows`
+- Or download libsodium MSVC prebuilts from the [releases page](https://download.libsodium.org/libsodium/releases/) — look for `libsodium-X.Y.Z-msvc.zip`
+
+---
+
+### Step 2 — Build the Windows Native Host
+
+#### Cross-compiling inside WSL
+
+A CMake toolchain file is required to tell CMake to use the MinGW-w64 cross-compiler instead of the host GCC. Create `cmake/toolchains/mingw-w64-x86_64.cmake` in the repository root if it does not already exist:
+
+```cmake
+# cmake/toolchains/mingw-w64-x86_64.cmake
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
+
+set(CMAKE_C_COMPILER   x86_64-w64-mingw32-gcc)
+set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
+set(CMAKE_RC_COMPILER  x86_64-w64-mingw32-windres)
+
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+```
+
+Configure and build, pointing CMake at the MinGW libsodium you extracted in Step 1:
+
+```bash
+cmake -B build-windows \
+    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-w64-x86_64.cmake \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_PREFIX_PATH=/absolute/wsl/path/to/libsodium-win64 \
+    -DPWLEDGER_BUILD_TESTS=OFF
+
+cmake --build build-windows --target pwledger-host -j$(nproc)
+```
+
+`PWLEDGER_BUILD_TESTS=OFF` skips fetching and building GoogleTest for the Windows target, which is not needed for the native host deployment.
+
+The output binary will be at:
+
+```
+build-windows/apps/native_host/pwledger-host.exe
+```
+
+Verify it is a valid Windows PE executable:
+
+```bash
+file build-windows/apps/native_host/pwledger-host.exe
+# Expected output: PE32+ executable (console) x86-64, for MS Windows
+```
+
+#### Native build on Windows
+
+From a **Developer PowerShell for VS 2022** or a terminal with MSVC in `PATH`:
+
+```powershell
+cmake -B build `
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+    -DCMAKE_TOOLCHAIN_FILE="C:\path\to\vcpkg\scripts\buildsystems\vcpkg.cmake" `
+    -DPWLEDGER_BUILD_TESTS=OFF
+
+cmake --build build --target pwledger-host
+```
+
+---
+
+### Step 3 — Copy the Binary to Windows
+
+If you cross-compiled inside WSL, copy the `.exe` to a stable Windows-side directory. Avoid placing it inside the WSL filesystem path (`\\wsl$\...`) — Windows can access files there, but the path is long and fragile. Copy it to a plain Windows path instead:
+
+```bash
+# From inside WSL — adjust the Windows username and destination
+cp build-windows/apps/native_host/pwledger-host.exe \
+   /mnt/c/Users/<YourWindowsUsername>/pwledger/pwledger-host.exe
+```
+
+The destination directory (`C:\Users\<YourWindowsUsername>\pwledger\`) must exist before copying. Create it from PowerShell if needed:
+
+```powershell
+New-Item -ItemType Directory -Path "C:\Users\$env:USERNAME\pwledger" -Force
+```
+
+> **Do not place the binary on a network drive, a removable drive, or a path that requires elevation to read.** Firefox spawns the native host as the current user; if the binary is inaccessible to that user, the spawn will silently fail.
+
+#### Runtime DLL dependencies
+
+If you compiled with MinGW-w64, the resulting `.exe` may dynamically link against MinGW runtime DLLs (`libstdc++-6.dll`, `libgcc_s_seh-1.dll`, `libwinpthread-1.dll`). These are not present on a standard Windows installation.
+
+Check what the binary depends on before copying:
+
+```bash
+# Inside WSL
+x86_64-w64-mingw32-objdump -p build-windows/apps/native_host/pwledger-host.exe \
+    | grep "DLL Name"
+```
+
+If MinGW DLLs appear in the output, either:
+
+**Option A — Copy the DLLs alongside the binary (simplest)**
+
+```bash
+# Locate the DLLs in the MinGW sysroot
+ls /usr/lib/gcc/x86_64-w64-mingw32/*/
+ls /usr/x86_64-w64-mingw32/lib/
+
+# Copy the required DLLs to the same directory as the .exe
+cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll \
+   /mnt/c/Users/<YourWindowsUsername>/pwledger/
+# Repeat for libstdc++-6.dll and libgcc_s_seh-1.dll if present
+```
+
+Firefox launches the native host with its own working directory, which may not be the binary's directory. Set `PATH` to include the binary directory, or use Option B.
+
+**Option B — Link statically (recommended for distribution)**
+
+Rebuild with static linking flags to produce a fully self-contained `.exe` with no external DLL dependencies:
+
+```bash
+cmake -B build-windows \
+    -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-w64-x86_64.cmake \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_PREFIX_PATH=/absolute/wsl/path/to/libsodium-win64 \
+    -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++" \
+    -DPWLEDGER_BUILD_TESTS=OFF
+
+cmake --build build-windows --target pwledger-host -j$(nproc)
+```
+
+Verify the resulting binary has no MinGW DLL dependencies:
+
+```bash
+x86_64-w64-mingw32-objdump -p build-windows/apps/native_host/pwledger-host.exe \
+    | grep "DLL Name"
+# Should show only Windows system DLLs: KERNEL32.dll, msvcrt.dll, etc.
+```
+
+> **libsodium static linking**: the MinGW prebuilt tarball provides both `libsodium.a` (static) and `libsodium.dll.a` (import library for the DLL). When building with `-static`, CMake will prefer `libsodium.a` automatically if you set `CMAKE_PREFIX_PATH` to the MinGW libsodium directory. Verify by checking that `libsodium.dll` does not appear in the `objdump` output.
+
+---
+
+### Step 4 — Register the Manifest and Load the Extension
+
+With the `.exe` on a stable Windows path, follow the [Windows](#windows) registration instructions. The only WSL-specific consideration is that you must edit `extension/pwledger.json` from the Windows side (or from WSL with a Windows path) and ensure the `"path"` field is a Windows absolute path:
+
+```json
+{
+  "name": "pwledger",
+  "description": "pwledger native messaging host",
+  "path": "C:\\Users\\YourUsername\\pwledger\\pwledger-host.exe",
+  "type": "stdio",
+  "allowed_extensions": ["pwledger@example.com"]
+}
+```
+
+Copy the manifest from WSL to the Windows-side Firefox directory:
+
+```bash
+# From inside WSL
+cp extension/pwledger.json \
+   /mnt/c/Users/<YourWindowsUsername>/AppData/Roaming/Mozilla/NativeMessagingHosts/pwledger.json
+```
+
+Then register the registry key as described in [Windows](#windows) and load the extension in Firefox as described in [Loading the Extension in Firefox](#loading-the-extension-in-firefox).
+
+---
+
+### Dependency Checklist
+
+Before testing the browser extension on Windows after a WSL build, verify each item:
+
+- [ ] `pwledger-host.exe` is a PE32+ executable (`file` output or Task Manager → Details tab shows the correct architecture)
+- [ ] The binary is on a Windows-native path (not `\\wsl$\...`)
+- [ ] No MinGW runtime DLLs are missing (run `pwledger-host.exe` directly in PowerShell to check for DLL load errors)
+- [ ] `extension/pwledger.json` contains a Windows absolute path with double backslashes (or forward slashes)
+- [ ] The manifest is in `%APPDATA%\Mozilla\NativeMessagingHosts\pwledger.json`
+- [ ] The registry key `HKCU\SOFTWARE\Mozilla\NativeMessagingHosts\pwledger` points to the manifest file
+- [ ] Firefox has been restarted after the registry change
+- [ ] The extension has been reloaded in `about:debugging` after Firefox restart
+
+---
+
+### Common Mistakes
+
+**Using the WSL-built Linux binary with Windows Firefox**
+
+The Linux ELF binary will not execute on Windows. Firefox will report "host not found" or silently fail to spawn the process. Always use `file pwledger-host.exe` to confirm the binary is a Windows PE executable before registering it.
+
+**Pointing the manifest path at the WSL filesystem (`\\wsl$\...`)**
+
+Firefox resolves the native host path using standard Win32 `CreateProcess`. Paths under `\\wsl$\` may be inaccessible to `CreateProcess` depending on the Windows build version and WSL configuration. Always copy the binary to a plain Windows path under `C:\` before registering.
+
+**Mixing libsodium ABIs**
+
+The MinGW-w64 cross-compiled binary must link against the MinGW-compatible libsodium (from the MinGW tarball). Linking against the MSVC `.lib` from the MSVC prebuilt zip will fail at link time due to ABI incompatibility. Similarly, the MSVC-compiled binary must use the MSVC libsodium. Do not mix them.
+
+**Forgetting to rebuild after source changes**
+
+If you modify any `.cpp` or `.h` files inside WSL and want the Windows binary to reflect those changes, you must re-run the cross-compile build (`cmake --build build-windows --target pwledger-host`) and copy the updated `.exe` to Windows again. The Windows binary is not automatically updated when you build the Linux targets.
+
+---
 
 - **No persistence**: the vault is in-memory only and is lost when the CLI exits or the browser closes. Encrypted disk persistence is planned.
 - **No automatic clipboard clear**: the `clip-clear` command and browser extension button must be used manually. An auto-clear timer is planned.
