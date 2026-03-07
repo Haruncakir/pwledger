@@ -16,7 +16,6 @@
  * SOFTWARE.
  */
 
-
 #include <pwledger/VaultIO.h>
 
 #include <sodium.h>
@@ -102,7 +101,7 @@ PrimaryTable VaultIO::load_vault(const std::filesystem::path& path, std::string_
 
   // 4. Clear plaintext
   sodium_memzero(plaintext.data(), plaintext.size());
-  
+
   return table;
 }
 

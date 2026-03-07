@@ -19,45 +19,57 @@
 #ifndef PWLEDGER_CLIPBOARD_H
 #define PWLEDGER_CLIPBOARD_H
 
-#include <pwledger/SecretEntry.h>
-
-#include <cstring>
-#include <iostream>
 #include <string_view>
+
+// ============================================================================
+// DESIGN NOTES
+// ============================================================================
+//
+// This header provides the public clipboard interface. It is intentionally
+// decoupled from the data model (SecretEntry, Secret): the clipboard module's
+// responsibility is writing and clearing raw bytes in the OS clipboard. The
+// caller is responsible for opening an access guard on a Secret and passing
+// the resulting span as a string_view. This inversion keeps the dependency
+// graph acyclic and avoids pulling the entire data model into every
+// translation unit that needs clipboard access.
+//
+// SECURITY NOTE
+// -------------
+// Clipboard operations are inherently insecure: other processes running under
+// the same user session can read the clipboard at any time. Providing this
+// feature is a usability concession. Callers should invoke clipboard_clear()
+// as soon as the secret is no longer needed.
+//
+// TODO(#issue-N): enforce auto-clear after a configurable timeout once the
+// threading model is established.
+//
+// FAILURE MODEL
+// -------------
+// Both functions are noexcept. Platform API failures are logged to stderr
+// and treated as best-effort: a clipboard failure must not interrupt normal
+// application flow or expose a secret via an error path.
+//
+// ============================================================================
 
 namespace pwledger {
 
-// ============================================================================
-// Clipboard management
-// ============================================================================
+// ----------------------------------------------------------------------------
+// clipboard_write
+// ----------------------------------------------------------------------------
+// Writes `text` to the system clipboard. On Linux, requires xclip or xsel
+// to be installed. On macOS, uses pbcopy. On Windows, uses the Win32
+// OpenClipboard / SetClipboardData API.
 //
-// Best-effort clipboard write and clear. Failures are logged to stderr but
-// are not fatal: the user can always read the secret from terminal output.
-// Clipboard operations are inherently insecure (other processes can read the
-// clipboard); this is a usability concession.
-//
-// TODO(#issue-N): enforce auto-clear after a configurable timeout.
-
-namespace detail {
-
-void clipboard_write(std::string_view text);
-void clipboard_clear();
-
-}  // namespace detail
+// `text` must remain valid for the duration of this call. It is not retained.
+void clipboard_write(std::string_view text) noexcept;
 
 // ----------------------------------------------------------------------------
-// clipboard_copy_secret
+// clipboard_clear
 // ----------------------------------------------------------------------------
-// Copies the entry's secret to the clipboard via a scoped read guard.
-// The actual secret length is determined from the null terminator written
-// by read_secret_from_stdin rather than from the full buffer allocation.
-void clipboard_copy_secret(const SecretEntry& entry);
-
-// ----------------------------------------------------------------------------
-// clipboard_clear_secret
-// ----------------------------------------------------------------------------
-// Overwrites the clipboard with an empty string.
-void clipboard_clear_secret();
+// Overwrites the system clipboard with an empty string, removing any
+// previously written secret. Should be called as soon as the user has
+// finished using the copied secret.
+void clipboard_clear() noexcept;
 
 }  // namespace pwledger
 

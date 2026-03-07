@@ -18,28 +18,81 @@
 
 #include <pwledger/ProcessHardening.h>
 
+#include <iostream>
+
 #ifdef __linux__
-#include <sys/prctl.h>
-#include <sys/resource.h>
+#  include <sys/prctl.h>
+#  include <sys/resource.h>
+#endif
+
+#ifdef __APPLE__
+// TODO(#issue-N): import macOS Hardened Runtime entitlement check headers
+// once macOS is a supported target. Candidate APIs:
+//   - SecTaskCopyValueForEntitlement (check for
+//     com.apple.security.cs.allow-unsigned-executable-memory)
+//   - PT_DENY_ATTACH via ptrace to resist debugger attachment at the syscall
+//     level (note: this is an advisory check, not a hard enforcement)
+#endif
+
+#ifdef _WIN32
+// TODO(#issue-N): import Windows anti-debug headers once Windows is a
+// supported target. Candidate APIs:
+//   - IsDebuggerPresent / CheckRemoteDebuggerPresent (advisory; easily
+//     bypassed, but catches accidental debugging in production)
+//   - SetUnhandledExceptionFilter to suppress crash dialogs that may expose
+//     register state and stack contents
 #endif
 
 namespace pwledger {
 
 void harden_process() noexcept {
 #ifdef __linux__
-  // Prevent core dumps from capturing in-memory secrets.
-  // Must be called before any Secret is constructed (see Secret.h).
-  prctl(PR_SET_DUMPABLE, 0);
+  // -------------------------------------------------------------------------
+  // Disable core dumps
+  // -------------------------------------------------------------------------
+  // prctl(PR_SET_DUMPABLE, 0) prevents the kernel from writing a core file
+  // on crash, which would otherwise contain all of the process's memory —
+  // including any secrets held in sodium-allocated pages. This call affects
+  // memory allocated *after* it is made; it must be called before any Secret
+  // is constructed (see "CALL ORDER" in ProcessHardening.h).
+  //
+  // prctl can fail if the calling process is in a container with a seccomp
+  // profile that blocks PR_SET_DUMPABLE (e.g., some Docker configurations).
+  // We log the failure and continue rather than aborting: the application
+  // remains functional, just with reduced hardening.
+  if (prctl(PR_SET_DUMPABLE, 0) != 0) {
+    std::cerr << "Warning: prctl(PR_SET_DUMPABLE, 0) failed; "
+                 "core dumps may capture secrets\n";
+  }
 
-  // Belt-and-suspenders: also set the core dump size limit to zero via
-  // setrlimit, which applies even if prctl is overridden by a child process.
-  const struct rlimit no_core {
-    0, 0
-  };
-  setrlimit(RLIMIT_CORE, &no_core);
+  // setrlimit(RLIMIT_CORE, {0, 0}) provides a belt-and-suspenders layer on
+  // top of prctl: it sets the maximum core file size to zero via the resource
+  // limit mechanism, which applies independently of dumpability flags and
+  // persists across fork/exec if the child does not explicitly raise the
+  // limit. This is not redundant with prctl: a child process can restore
+  // dumpability via prctl(PR_SET_DUMPABLE, 1), but it cannot raise the hard
+  // limit of RLIMIT_CORE beyond what the parent set, unless it has
+  // CAP_SYS_RESOURCE.
+  //
+  // Both soft and hard limits are set to 0. Setting only the soft limit
+  // would allow the process to raise it back to the hard limit later.
+  const rlimit no_core{0, 0};
+  if (setrlimit(RLIMIT_CORE, &no_core) != 0) {
+    std::cerr << "Warning: setrlimit(RLIMIT_CORE, {0,0}) failed; "
+                 "core file size limit not enforced\n";
+  }
 #endif
-  // TODO(#issue-N): add macOS Hardened Runtime check and Windows
-  // IsDebuggerPresent mitigation once those platforms are targeted.
+
+#ifdef __APPLE__
+  // TODO(#issue-N): implement macOS hardening. See includes above for
+  // candidate APIs. At minimum, log a warning in debug builds if the
+  // process is running under lldb or Instruments.
+#endif
+
+#ifdef _WIN32
+  // TODO(#issue-N): implement Windows hardening. See includes above for
+  // candidate APIs.
+#endif
 }
 
 }  // namespace pwledger

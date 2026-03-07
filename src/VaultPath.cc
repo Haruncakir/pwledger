@@ -16,7 +16,6 @@
  * SOFTWARE.
  */
 
-
 #include <pwledger/VaultPath.h>
 
 namespace pwledger {

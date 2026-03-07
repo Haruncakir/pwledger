@@ -18,6 +18,8 @@
 
 #include <pwledger/SecretEntry.h>
 
+#include <chrono>
+
 namespace pwledger {
 
 SecretEntry::SecretEntry(std::string pk, std::string user, std::size_t secret_size, std::size_t salt_size)

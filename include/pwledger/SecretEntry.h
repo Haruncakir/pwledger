@@ -23,7 +23,6 @@
 #include <pwledger/EntrySecurityPolicy.h>
 #include <pwledger/Secret.h>
 
-#include <chrono>
 #include <string>
 
 namespace pwledger {

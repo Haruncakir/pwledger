@@ -19,24 +19,42 @@
 #ifndef PWLEDGER_PROCESSHARDENING_H
 #define PWLEDGER_PROCESSHARDENING_H
 
-#ifdef __linux__
-#include <sys/prctl.h>
-#include <sys/resource.h>
-#endif
+// ============================================================================
+// DESIGN NOTES
+// ============================================================================
+//
+// This header provides process-level security hardening applied once at
+// startup, before any Secret is constructed. The mitigations here reduce the
+// risk of sensitive data leaking through core dumps or debugger attachment.
+// They are not a substitute for OS-level hardening (seccomp, AppArmor,
+// SELinux, Hardened Runtime) but serve as a useful first layer for a CLI
+// application and catch accidental misuse (e.g., running under a debugger
+// in production).
+//
+// FAILURE MODEL
+// -------------
+// harden_process() is noexcept and best-effort. Platform API failures are
+// logged to stderr but are not fatal: a system that disallows these calls
+// (e.g., a container with a restrictive seccomp profile) should still run
+// the application normally. The intent is to detect and warn, not to abort.
+//
+// CALL ORDER
+// ----------
+// harden_process() must be called before any pwledger::Secret is constructed.
+// On Linux, prctl(PR_SET_DUMPABLE, 0) only affects memory allocated after
+// the call; secrets allocated before it may still appear in a core dump.
+// See also: Secret.h "KNOWN LIMITATIONS".
+//
+// ============================================================================
 
 namespace pwledger {
 
 // ----------------------------------------------------------------------------
 // harden_process
 // ----------------------------------------------------------------------------
-// Best-effort process hardening applied once at startup, before any Secret
-// is constructed. These mitigations reduce the risk of sensitive data leaking
-// through core dumps or debugger attachment. They are not a substitute for
-// OS-level hardening (seccomp, AppArmor, SELinux) but serve as a first layer
-// for a CLI application.
-//
-// None of these calls are fatal on failure; a system that disallows them
-// (e.g., a container with limited capabilities) should still run normally.
+// Applies all available process hardening for the current platform. Must be
+// called once at process startup, before any Secret is constructed.
+// See "CALL ORDER" and "FAILURE MODEL" above.
 void harden_process() noexcept;
 
 }  // namespace pwledger

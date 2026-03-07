@@ -50,7 +50,7 @@
 //
 // PERSISTENCE & ENCRYPTION
 // ------------------------
-// The PrimaryTable is persisted to disk using Argon2id for KDF and 
+// The PrimaryTable is persisted to disk using Argon2id for KDF and
 // XChaCha20-Poly1305 for AEAD. The file is saved atomically.
 //
 // THREAD SAFETY
