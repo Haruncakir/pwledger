@@ -491,11 +491,15 @@ void cmd_copy(AppState& state) {
   if (touch_last_used(state.table, *uuid)) {
     save_vault_safe(state);
   }
-  clipboard_copy_secret(*entry);
+  entry->plaintext_secret.with_read_access([&](std::span<const char> buf) {
+    clipboard_write(std::string_view(buf.data(), ::strnlen(buf.data(), buf.size())));
+  });
+  // std::cout << "Secret copied to clipboard.\n";
 }
 
 void cmd_clip_clear(AppState& /*state*/) {
-  clipboard_clear_secret();
+  clipboard_clear();
+  // std::cout << "Clipboard cleared.\n";
 }
 
 void cmd_save(AppState& state) {

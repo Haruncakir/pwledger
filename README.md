@@ -451,7 +451,7 @@ build-windows/apps/native_host/pwledger-host.exe
 Verify it is a valid Windows PE executable:
 
 ```bash
-file build-windows/apps/native_host/pwledger-host.exe
+file build-windows/apps/pwledger-host.exe
 # Expected output: PE32+ executable (console) x86-64, for MS Windows
 ```
 

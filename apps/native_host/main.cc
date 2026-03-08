@@ -428,21 +428,20 @@ void write_message(const json& msg) noexcept {
 // before invoking the handler, so individual handlers do not need to recheck
 // it. Adding a new command requires a conscious decision about auth posture.
 
+// Handler signature is intentionally wide to accommodate all commands
+// without overloading. Unused parameters are named with /**/ in handlers.
+using Handler = json (*)(const json&, VaultState&, PrimaryTable&, std::optional<json>);
+
 struct CommandDescriptor {
   bool requires_unlock;
-  // Handler signature is intentionally wide to accommodate all commands
-  // without overloading. Unused parameters are named with /**/ in handlers.
-  json (*handle)(const json& req,
-                 VaultState& state,
-                 PrimaryTable& table,
-                 std::optional<json> id);
+  Handler handle;
 };
 
 // Trampoline adapters bridge the uniform dispatch signature to the narrower
 // per-handler signatures, keeping the handler implementations clean.
 namespace {
 
-json dispatch_ping(const json& req, VaultState state,
+json dispatch_ping(const json& req, VaultState& state,
                    PrimaryTable& table, std::optional<json> id) {
   return handle_ping(req, state, table, std::move(id));
 }

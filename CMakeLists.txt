@@ -102,12 +102,22 @@ if(PWLEDGER_ENABLE_SECURITY_HARDENING)
             # rather than globally, because it requires at least -O1 and is
             # silently ignored in debug (-O0) builds.
         )
-        add_link_options(
-            -pie                        # Position independent executable
-            -Wl,-z,relro                # Read-only relocations
-            -Wl,-z,now                  # Immediate binding
-            -Wl,-z,noexecstack          # Non-executable stack
-        )
+        if(WIN32)
+            # MinGW specific security flags
+            add_link_options(
+                -Wl,--dynamicbase       # ASLR
+                -Wl,--nxcompat          # DEP
+            )
+        elseif(APPLE)
+            # macOS specific
+        else()
+            add_link_options(
+                -pie                        # Position independent executable
+                -Wl,-z,relro                # Read-only relocations
+                -Wl,-z,now                  # Immediate binding
+                -Wl,-z,noexecstack          # Non-executable stack
+            )
+        endif()
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             add_compile_options(
                 -fstack-clash-protection    # Stack clash protection

@@ -43,6 +43,7 @@
 .vscode
 .cache
 build/
+build-windows/
 compile_commands.json
 
 # Emacs
