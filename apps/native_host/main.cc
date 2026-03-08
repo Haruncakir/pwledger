@@ -129,9 +129,10 @@ namespace pwledger {
 // ============================================================================
 
 // Maximum permitted size of a single incoming Native Messaging message.
-// Chrome's Native Messaging specification caps messages at 1 MB. We use the
-// same limit to reject malformed or malicious oversized length prefixes
-// (e.g., 0xFFFFFFFF would otherwise trigger a 4 GB std::string allocation).
+// The Native Messaging protocol used by Chrome and Firefox caps messages
+// at 1 MB. We enforce the same limit to reject malformed or malicious
+// oversized length prefixes (e.g., 0xFFFFFFFF would otherwise trigger a
+// 4 GB std::string allocation).
 constexpr uint32_t kMaxMessageBytes = 1024u * 1024u;  // 1 MiB
 
 // ============================================================================
