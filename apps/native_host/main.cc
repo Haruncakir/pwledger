@@ -110,6 +110,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <optional>
 #include <span>
@@ -316,7 +317,11 @@ void write_message(const json& msg) noexcept {
 
     if (!VaultIO::vault_exists(vault_path)) {
       sodium_memzero(password.data(), password.size());
-      return make_error("Vault not found", id);
+      // Include the resolved path so the extension can surface it for
+      // diagnosis, and direct the caller to init_vault if no vault exists yet.
+      return make_error(
+          "Vault not found at: " + vault_path.string() +
+          ". Use 'init_vault' to create a new vault.", id);
     }
 
     try {
@@ -349,6 +354,72 @@ void write_message(const json& msg) noexcept {
   table.clear();
   state = VaultState::Locked;
   return make_ok(id);
+}
+
+// ----------------------------------------------------------------------------
+// handle_init_vault
+// ----------------------------------------------------------------------------
+// Creates a new empty vault at the platform default path, encrypted with the
+// supplied master password. Fails if a vault already exists at that path to
+// prevent accidental data loss. The parent directory is created if it does
+// not yet exist, which is the common case on a fresh Windows installation
+// where the AppData\Roaming\pwledger directory has never been created.
+//
+// After a successful init_vault, the caller should immediately send an
+// "unlock" command with the same password to load the (empty) vault into
+// the session. init_vault does not automatically unlock the session.
+//
+// PASSWORD HANDLING: same zeroing strategy as handle_unlock. See file header.
+[[nodiscard]] json handle_init_vault(const json&    req,
+                                     VaultState&    /*state*/,
+                                     PrimaryTable&  /*table*/,
+                                     std::optional<json> id) {
+  std::string password = req.value("password", "");
+
+  if (password.empty()) {
+    sodium_memzero(password.data(), password.size());
+    return make_error("Password must not be empty", id);
+  }
+
+  json response = make_error("Vault initialization failed", id);
+  {
+    const auto vault_path = default_vault_path();
+
+    if (VaultIO::vault_exists(vault_path)) {
+      sodium_memzero(password.data(), password.size());
+      return make_error(
+          "Vault already exists at: " + vault_path.string() +
+          ". Delete it before reinitializing.", id);
+    }
+
+    // Create the parent directory if it does not exist. VaultIO::save_vault
+    // writes to a .tmp file in the same directory; if the directory is absent
+    // the write fails with a misleading error.
+    try {
+      std::filesystem::create_directories(vault_path.parent_path());
+    } catch (const std::filesystem::filesystem_error& e) {
+      sodium_memzero(password.data(), password.size());
+      return make_error(
+          std::string("Failed to create vault directory: ") + e.what(), id);
+    }
+
+    try {
+      // Serialize and encrypt an empty table. The vault file now exists on
+      // disk and is readable by subsequent "unlock" commands.
+      const PrimaryTable empty_table;
+      VaultIO::save_vault(vault_path, empty_table, password);
+
+      json r = make_ok(id);
+      r["vault_path"] = vault_path.string();  // surface the path for confirmation
+      response = std::move(r);
+    } catch (const std::exception& e) {
+      response = make_error(e.what(), id);
+    }
+  }
+
+  // Zero the password regardless of success or failure.
+  sodium_memzero(password.data(), password.size());
+  return response;
 }
 
 // ----------------------------------------------------------------------------
@@ -454,6 +525,10 @@ json dispatch_lock(const json& req, VaultState& state,
                    PrimaryTable& table, std::optional<json> id) {
   return handle_lock(req, state, table, std::move(id));
 }
+json dispatch_init_vault(const json& req, VaultState& state,
+                         PrimaryTable& table, std::optional<json> id) {
+  return handle_init_vault(req, state, table, std::move(id));
+}
 json dispatch_search(const json& req, VaultState& /*state*/,
                      PrimaryTable& table, std::optional<json> id) {
   return handle_search(req, table, std::move(id));
@@ -470,12 +545,13 @@ json dispatch_clip_clear(const json& req, VaultState& /*state*/,
 }  // anonymous namespace
 
 const std::unordered_map<std::string, CommandDescriptor> kCommands{
-  { "ping",       { /*requires_unlock=*/false, dispatch_ping       } },
-  { "unlock",     { /*requires_unlock=*/false, dispatch_unlock     } },
-  { "lock",       { /*requires_unlock=*/false, dispatch_lock       } },
-  { "search",     { /*requires_unlock=*/true,  dispatch_search     } },
-  { "copy",       { /*requires_unlock=*/true,  dispatch_copy       } },
-  { "clip_clear", { /*requires_unlock=*/false, dispatch_clip_clear } },
+  { "ping",        { /*requires_unlock=*/false, dispatch_ping        } },
+  { "unlock",      { /*requires_unlock=*/false, dispatch_unlock      } },
+  { "lock",        { /*requires_unlock=*/false, dispatch_lock        } },
+  { "init_vault",  { /*requires_unlock=*/false, dispatch_init_vault  } },
+  { "search",      { /*requires_unlock=*/true,  dispatch_search      } },
+  { "copy",        { /*requires_unlock=*/true,  dispatch_copy        } },
+  { "clip_clear",  { /*requires_unlock=*/false, dispatch_clip_clear  } },
 };
 
 // ============================================================================
