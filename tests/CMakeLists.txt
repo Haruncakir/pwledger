@@ -55,3 +55,19 @@ target_link_libraries(test_vault
 gtest_discover_tests(test_vault)
 
 # ---------------------------
+
+# Config tests
+# ---------------------------
+add_executable(test_config
+    test_config.cc
+)
+
+target_link_libraries(test_config
+    PRIVATE
+        pwledger_core
+        GTest::gtest_main
+)
+
+gtest_discover_tests(test_config)
+
+# ---------------------------

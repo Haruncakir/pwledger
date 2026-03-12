@@ -100,6 +100,7 @@
 #endif
 
 #include <pwledger/Clipboard.h>
+#include <pwledger/Config.h>
 #include <pwledger/PrimaryTable.h>
 #include <pwledger/ProcessHardening.h>
 #include <pwledger/Secret.h>
@@ -303,6 +304,7 @@ void write_message(const json& msg) noexcept {
 [[nodiscard]] json handle_unlock(const json&    req,
                                  VaultState&    state,
                                  PrimaryTable&  table,
+                                 const Config&  cfg,
                                  std::optional<json> id) {
   // Extract the password as late as possible and zero it before returning.
   // nlohmann::json::value() returns a copy; we cannot avoid the std::string
@@ -313,7 +315,7 @@ void write_message(const json& msg) noexcept {
   // as soon as load_vault returns, before any other work happens.
   json response = make_error("Vault load failed", id);
   {
-    const auto vault_path = default_vault_path();
+    const auto vault_path = resolve_vault_path(cfg.vault);
 
     if (!VaultIO::vault_exists(vault_path)) {
       sodium_memzero(password.data(), password.size());
@@ -373,6 +375,7 @@ void write_message(const json& msg) noexcept {
 [[nodiscard]] json handle_init_vault(const json&    req,
                                      VaultState&    /*state*/,
                                      PrimaryTable&  /*table*/,
+                                     const Config&  cfg,
                                      std::optional<json> id) {
   std::string password = req.value("password", "");
 
@@ -383,7 +386,7 @@ void write_message(const json& msg) noexcept {
 
   json response = make_error("Vault initialization failed", id);
   {
-    const auto vault_path = default_vault_path();
+    const auto vault_path = resolve_vault_path(cfg.vault);
 
     if (VaultIO::vault_exists(vault_path)) {
       sodium_memzero(password.data(), password.size());
@@ -502,7 +505,7 @@ void write_message(const json& msg) noexcept {
 
 // Handler signature is intentionally wide to accommodate all commands
 // without overloading. Unused parameters are named with /**/ in handlers.
-using Handler = json (*)(const json&, VaultState&, PrimaryTable&, std::optional<json>);
+using Handler = json (*)(const json&, VaultState&, PrimaryTable&, const Config&, std::optional<json>);
 
 struct CommandDescriptor {
   bool requires_unlock;
@@ -514,31 +517,31 @@ struct CommandDescriptor {
 namespace {
 
 json dispatch_ping(const json& req, VaultState& state,
-                   PrimaryTable& table, std::optional<json> id) {
+                   PrimaryTable& table, const Config& /*cfg*/, std::optional<json> id) {
   return handle_ping(req, state, table, std::move(id));
 }
 json dispatch_unlock(const json& req, VaultState& state,
-                     PrimaryTable& table, std::optional<json> id) {
-  return handle_unlock(req, state, table, std::move(id));
+                     PrimaryTable& table, const Config& cfg, std::optional<json> id) {
+  return handle_unlock(req, state, table, cfg, std::move(id));
 }
 json dispatch_lock(const json& req, VaultState& state,
-                   PrimaryTable& table, std::optional<json> id) {
+                   PrimaryTable& table, const Config& /*cfg*/, std::optional<json> id) {
   return handle_lock(req, state, table, std::move(id));
 }
 json dispatch_init_vault(const json& req, VaultState& state,
-                         PrimaryTable& table, std::optional<json> id) {
-  return handle_init_vault(req, state, table, std::move(id));
+                         PrimaryTable& table, const Config& cfg, std::optional<json> id) {
+  return handle_init_vault(req, state, table, cfg, std::move(id));
 }
 json dispatch_search(const json& req, VaultState& /*state*/,
-                     PrimaryTable& table, std::optional<json> id) {
+                     PrimaryTable& table, const Config& /*cfg*/, std::optional<json> id) {
   return handle_search(req, table, std::move(id));
 }
 json dispatch_copy(const json& req, VaultState& /*state*/,
-                   PrimaryTable& table, std::optional<json> id) {
+                   PrimaryTable& table, const Config& /*cfg*/, std::optional<json> id) {
   return handle_copy(req, table, std::move(id));
 }
 json dispatch_clip_clear(const json& req, VaultState& /*state*/,
-                         PrimaryTable& /*table*/, std::optional<json> id) {
+                         PrimaryTable& /*table*/, const Config& /*cfg*/, std::optional<json> id) {
   return handle_clip_clear(req, std::move(id));
 }
 
@@ -558,7 +561,7 @@ const std::unordered_map<std::string, CommandDescriptor> kCommands{
 // Message loop
 // ============================================================================
 
-void run_message_loop() {
+void run_message_loop(const Config& cfg) {
   PrimaryTable table;
   VaultState   state = VaultState::Locked;
 
@@ -588,7 +591,7 @@ void run_message_loop() {
       } else if (it->second.requires_unlock && state != VaultState::Unlocked) {
         response = make_error("Locked", req_id);
       } else {
-        response = it->second.handle(req, state, table, req_id);
+        response = it->second.handle(req, state, table, cfg, req_id);
       }
     } catch (const json::parse_error&) {
       response = make_error("Invalid JSON", req_id);
@@ -630,6 +633,15 @@ int main() {
     return 1;
   }
 
-  pwledger::run_message_loop();
+  // Load user configuration (missing file -> defaults).
+  pwledger::Config cfg;
+  try {
+    cfg = pwledger::load_config();
+  } catch (const std::exception& e) {
+    std::cerr << "Warning: Failed to load config: " << e.what()
+              << ". Using defaults.\n";
+  }
+
+  pwledger::run_message_loop(cfg);
   return 0;
 }

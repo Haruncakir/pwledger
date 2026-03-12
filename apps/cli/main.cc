@@ -17,6 +17,7 @@
  */
 
 #include <pwledger/Clipboard.h>
+#include <pwledger/Config.h>
 #include <pwledger/PrimaryTable.h>
 #include <pwledger/ProcessHardening.h>
 #include <pwledger/Secret.h>
@@ -67,6 +68,7 @@ namespace pwledger {
 
 // State passed to all commands.
 struct AppState {
+  pwledger::Config config;
   pwledger::PrimaryTable table;
   pwledger::Secret master_password{1}; // placeholder until initialized
   std::filesystem::path vault_path;
@@ -457,12 +459,14 @@ void cmd_delete(AppState& state) {
     return;
   }
 
-  std::cout << "Delete entry '" << *uuid << "'? [y/N]: ";
-  std::string confirm;
-  std::getline(std::cin, confirm);
-  if (confirm != "y" && confirm != "Y") {
-    std::cout << "Cancelled.\n";
-    return;
+  if (state.config.cli.confirm_before_delete) {
+    std::cout << "Delete entry '" << *uuid << "'? [y/N]: ";
+    std::string confirm;
+    std::getline(std::cin, confirm);
+    if (confirm != "y" && confirm != "Y") {
+      std::cout << "Cancelled.\n";
+      return;
+    }
   }
 
   if (entry_delete(state.table, *uuid)) {
@@ -611,9 +615,19 @@ int main() {
   }
 
   pwledger::AppState state;
+
+  // Load user configuration (missing file -> defaults).
   try {
-    pwledger::ensure_vault_dir_exists();
-    state.vault_path = pwledger::default_vault_path();
+    state.config = pwledger::load_config();
+  } catch (const std::exception& e) {
+    std::cerr << "Warning: Failed to load config: " << e.what()
+              << ". Using defaults.\n";
+  }
+
+  try {
+    auto vault_dir = pwledger::resolve_vault_dir(state.config.vault);
+    pwledger::ensure_vault_dir_exists(vault_dir);
+    state.vault_path = pwledger::resolve_vault_path(state.config.vault);
   } catch (const std::exception& e) {
     std::cerr << "Fatal: Failed to create vault directory: " << e.what() << '\n';
     return 1;

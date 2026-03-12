@@ -23,7 +23,11 @@
 #include <filesystem>
 #include <string>
 
+
 namespace pwledger {
+
+// Forward declaration to avoid pulling in Config.h from every translation unit.
+struct VaultConfig;
 
 // ----------------------------------------------------------------------------
 // VaultPath
@@ -38,9 +42,16 @@ std::filesystem::path default_vault_dir();
 
 std::filesystem::path default_vault_path();
 
+// Config-aware overloads. If VaultConfig::directory is non-empty, it is used
+// as the vault directory (tilde expansion is expected to have been applied by
+// load_config). Otherwise, falls through to the platform default.
+std::filesystem::path resolve_vault_dir(const VaultConfig& cfg);
+std::filesystem::path resolve_vault_path(const VaultConfig& cfg);
+
 // Ensures the vault directory exists, creating it with restrictive permissions
 // if it does not. Throws std::filesystem::filesystem_error on failure.
 void ensure_vault_dir_exists();
+void ensure_vault_dir_exists(const std::filesystem::path& dir);
 
 }  // namespace pwledger
 

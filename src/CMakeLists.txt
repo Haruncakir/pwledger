@@ -23,8 +23,15 @@
 # When compiled source files are added to the core library (e.g., a persistence
 # layer or crypto wrappers), change INTERFACE back to STATIC and move the
 # INTERFACE keywords below to PUBLIC.
+include(FetchContent)
+FetchContent_Declare(nlohmann_json
+  URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 add_library(pwledger_core STATIC
     Clipboard.cc
+    Config.cc
     ProcessHardening.cc
     Secret.cc
     SecretEntry.cc
@@ -45,10 +52,10 @@ target_include_directories(pwledger_core
         $<INSTALL_INTERFACE:include>
 )
 
-# Link libsodium to the core library. Downstream targets that link
-# pwledger_core will transitively receive the libsodium dependency.
+# Link libsodium and nlohmann_json to the core library. Downstream targets
+# that link pwledger_core will transitively receive both dependencies.
 if(TARGET Sodium::Sodium)
-    target_link_libraries(pwledger_core PUBLIC Sodium::Sodium)
+    target_link_libraries(pwledger_core PUBLIC Sodium::Sodium nlohmann_json::nlohmann_json)
 else()
-    target_link_libraries(pwledger_core PUBLIC sodium)
+    target_link_libraries(pwledger_core PUBLIC sodium nlohmann_json::nlohmann_json)
 endif()

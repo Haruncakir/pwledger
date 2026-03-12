@@ -17,6 +17,7 @@
  */
 
 #include <pwledger/VaultPath.h>
+#include <pwledger/Config.h>
 
 namespace pwledger {
 
@@ -62,10 +63,24 @@ std::filesystem::path default_vault_path() {
   return default_vault_dir() / "vault.dat";
 }
 
+std::filesystem::path resolve_vault_dir(const VaultConfig& cfg) {
+  if (!cfg.directory.empty()) {
+    return std::filesystem::path(cfg.directory);
+  }
+  return default_vault_dir();
+}
+
+std::filesystem::path resolve_vault_path(const VaultConfig& cfg) {
+  return resolve_vault_dir(cfg) / cfg.default_vault;
+}
+
 // Ensures the vault directory exists, creating it with restrictive permissions
 // if it does not. Throws std::filesystem::filesystem_error on failure.
 void ensure_vault_dir_exists() {
-  std::filesystem::path dir = default_vault_dir();
+  ensure_vault_dir_exists(default_vault_dir());
+}
+
+void ensure_vault_dir_exists(const std::filesystem::path& dir) {
   if (!std::filesystem::exists(dir)) {
     // Create with owner-only access (rwx------)
     std::filesystem::create_directories(dir);
