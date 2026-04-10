@@ -1,0 +1,9 @@
+{
+    "name": "pwledger",
+    "description": "Password Ledger Native Host",
+    "path": "/absolute/path/to/pwledger-host",
+    "type": "stdio",
+    "allowed_origins": [
+        "chrome-extension://EXTENSION_ID_HERE/"
+    ]
+}

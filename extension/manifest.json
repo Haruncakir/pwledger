@@ -1,8 +1,13 @@
 {
     "manifest_version": 2,
     "name": "Password Ledger",
-    "version": "1.1",
-    "description": "Secure password manager with auto-fill using native messaging.",
+    "version": "1.2",
+    "description": "Secure, offline-first password vault with auto-fill. Secrets are stored in hardened memory — no cloud, no telemetry.",
+    "icons": {
+        "16": "icons/icon-16.svg",
+        "48": "icons/icon-48.svg",
+        "128": "icons/icon-128.svg"
+    },
     "permissions": [
         "nativeMessaging",
         "activeTab",
@@ -11,19 +16,25 @@
     ],
     "background": {
         "scripts": [
+            "browser-polyfill.js",
             "background.js"
         ]
     },
     "content_scripts": [
         {
             "matches": ["<all_urls>"],
-            "js": ["content.js"],
+            "js": ["browser-polyfill.js", "content.js"],
             "css": ["content.css"],
             "run_at": "document_idle"
         }
     ],
-    "action": {
-        "default_popup": "popup/popup.html"
+    "browser_action": {
+        "default_icon": {
+            "16": "icons/icon-16.svg",
+            "48": "icons/icon-48.svg"
+        },
+        "default_popup": "popup/popup.html",
+        "default_title": "Password Ledger"
     },
     "browser_specific_settings": {
         "gecko": {

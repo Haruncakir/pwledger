@@ -16,13 +16,17 @@ A professional-grade, offline-first password vault built in modern C++20. Secret
 - [Browser Extension](#browser-extension)
   - [How It Works](#how-it-works)
   - [Auto-Fill](#auto-fill)
-  - [Setting Up the Extension](#setting-up-the-extension)
-    - [Linux / WSL (Firefox on Linux)](#linux--wsl-firefox-on-linux)
-    - [macOS](#macos-1)
-    - [Windows](#windows)
-  - [Loading the Extension in Firefox](#loading-the-extension-in-firefox)
+  - [Setting Up the Native Host](#setting-up-the-native-host)
+    - [Firefox — Linux / WSL](#firefox--linux--wsl)
+    - [Firefox — macOS](#firefox--macos)
+    - [Firefox — Windows](#firefox--windows)
+    - [Chrome / Chromium — Linux](#chrome--chromium--linux)
+    - [Chrome / Chromium — macOS](#chrome--chromium--macos)
+    - [Chrome / Chromium — Windows](#chrome--chromium--windows)
+  - [Loading the Extension](#loading-the-extension)
   - [Verifying the Connection](#verifying-the-connection)
   - [Troubleshooting](#troubleshooting)
+  - [Signing & Distribution](#signing--distribution)
 - [Build Options](#build-options)
 - [Security Model](#security-model)
 - [Known Limitations](#known-limitations)
@@ -41,7 +45,7 @@ A professional-grade, offline-first password vault built in modern C++20. Secret
 | ⏱️ **Constant-time ops** | Password confirmation uses `sodium_memcmp` — no timing side-channels |
 | 🖥️ **Cross-platform** | Linux, macOS, and Windows (MSVC / MinGW) |
 | ⌨️ **CLI interface** | Interactive CRUD with echo-suppressed input and clipboard integration |
-| 🌐 **Browser extension** | Firefox native messaging with **auto-fill** — credentials are injected directly into login forms |
+| 🌐 **Browser extension** | Firefox & Chrome/Chromium native messaging with **auto-fill** — credentials are injected directly into login forms |
 
 ---
 
@@ -338,11 +342,13 @@ When you navigate to a login page:
 
 The auto-fill works with most login forms, including those built with React, Angular, and Vue (it uses native input setters and dispatches proper DOM events).
 
-### Setting Up the Extension
+### Setting Up the Native Host
 
-There are two parts: (1) register the native host manifest so Firefox can find `pwledger-host`, and (2) load the extension.
+There are two parts: (1) register the native host manifest so your browser can find `pwledger-host`, and (2) load the extension.
 
-#### Linux / WSL (Firefox on Linux)
+> **Key difference:** Firefox uses `allowed_extensions` in the manifest with extension IDs. Chrome uses `allowed_origins` with the format `chrome-extension://EXTENSION_ID/`. Use `extension/pwledger.json` for Firefox and `extension/pwledger-chrome.json` for Chrome.
+
+#### Firefox — Linux / WSL
 
 ```bash
 # 1. Create the native messaging hosts directory
@@ -364,9 +370,9 @@ Or use the setup script:
 ./setup/setup.sh --register-extension
 ```
 
-> ⚠️ **WSL users:** If your Firefox runs on **Windows** (not inside WSL), the Linux binary won't work. You need a Windows `.exe` — see [WSL → Windows (Cross-Compile)](#-wsl--windows-cross-compile) and the [Windows](#windows) registration below.
+> ⚠️ **WSL users:** If your Firefox runs on **Windows** (not inside WSL), the Linux binary won't work. You need a Windows `.exe` — see [WSL → Windows (Cross-Compile)](#-wsl--windows-cross-compile) and the [Firefox — Windows](#firefox--windows) registration below.
 
-#### macOS
+#### Firefox — macOS
 
 ```bash
 # 1. Create the directory
@@ -383,7 +389,7 @@ chmod +x /path/to/pwledger-host
 xattr -d com.apple.quarantine /path/to/pwledger-host
 ```
 
-#### Windows
+#### Firefox — Windows
 
 Firefox reads the native host manifest path from the Windows Registry.
 
@@ -404,11 +410,9 @@ Firefox reads the native host manifest path from the Windows Registry.
 2. **Copy the manifest** to Firefox's expected location:
 
    ```powershell
-   # Create the directory
    New-Item -ItemType Directory `
        -Path "$env:APPDATA\Mozilla\NativeMessagingHosts" -Force
 
-   # Copy the manifest
    Copy-Item extension\pwledger.json `
        "$env:APPDATA\Mozilla\NativeMessagingHosts\pwledger.json"
    ```
@@ -429,7 +433,88 @@ Or use the setup script from Developer PowerShell:
 .\setup\setup.ps1 -RegisterExtension
 ```
 
-### Loading the Extension in Firefox
+#### Chrome / Chromium — Linux
+
+```bash
+# 1. Create the native messaging hosts directory
+#    For Chrome:
+mkdir -p ~/.config/google-chrome/NativeMessagingHosts
+#    For Chromium:
+# mkdir -p ~/.config/chromium/NativeMessagingHosts
+
+# 2. Edit extension/pwledger-chrome.json:
+#    - Set "path" to the ABSOLUTE path of pwledger-host
+#    - Set your extension's ID in "allowed_origins"
+#      (find it at chrome://extensions after loading the extension)
+
+# 3. Copy the manifest
+cp extension/pwledger-chrome.json \
+   ~/.config/google-chrome/NativeMessagingHosts/pwledger.json
+
+# 4. Verify
+cat ~/.config/google-chrome/NativeMessagingHosts/pwledger.json
+```
+
+> 💡 **Finding your extension ID:** Load the extension first (see [Loading the Extension](#loading-the-extension)), then copy the ID from `chrome://extensions`. Update `allowed_origins` to `["chrome-extension://YOUR_ID_HERE/"]` — the trailing slash is required.
+
+#### Chrome / Chromium — macOS
+
+```bash
+# 1. Create the directory
+#    For Chrome:
+mkdir -p ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts
+#    For Chromium:
+# mkdir -p ~/Library/Application\ Support/Chromium/NativeMessagingHosts
+
+# 2. Edit extension/pwledger-chrome.json (set path and allowed_origins)
+
+# 3. Copy the manifest
+cp extension/pwledger-chrome.json \
+   ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/pwledger.json
+
+# 4. Clear Gatekeeper quarantine
+chmod +x /path/to/pwledger-host
+xattr -d com.apple.quarantine /path/to/pwledger-host
+```
+
+#### Chrome / Chromium — Windows
+
+Chrome reads the native host manifest path from the Windows Registry, similar to Firefox but under a different key.
+
+1. **Edit `extension\pwledger-chrome.json`** — set `"path"` and `"allowed_origins"`:
+
+   ```json
+   {
+     "name": "pwledger",
+     "description": "Password Ledger Native Host",
+     "path": "C:\\Users\\you\\pwledger\\pwledger-host.exe",
+     "type": "stdio",
+     "allowed_origins": ["chrome-extension://YOUR_EXTENSION_ID_HERE/"]
+   }
+   ```
+
+2. **Copy the manifest** and **set the registry key**:
+
+   ```powershell
+   # Create the directory
+   New-Item -ItemType Directory `
+       -Path "$env:APPDATA\Google\Chrome\NativeMessagingHosts" -Force
+
+   # Copy the manifest
+   Copy-Item extension\pwledger-chrome.json `
+       "$env:APPDATA\Google\Chrome\NativeMessagingHosts\pwledger.json"
+
+   # Registry key (Chrome)
+   New-Item -Path "HKCU:\SOFTWARE\Google\Chrome\NativeMessagingHosts\pwledger" -Force
+   Set-ItemProperty `
+       -Path "HKCU:\SOFTWARE\Google\Chrome\NativeMessagingHosts\pwledger" `
+       -Name "(Default)" `
+       -Value "$env:APPDATA\Google\Chrome\NativeMessagingHosts\pwledger.json"
+   ```
+
+### Loading the Extension
+
+#### Firefox
 
 1. Open Firefox → navigate to `about:debugging#/runtime/this-firefox`
 2. Click **"Load Temporary Add-on..."**
@@ -437,6 +522,17 @@ Or use the setup script from Developer PowerShell:
 4. The 🔐 pwledger icon appears in the toolbar
 
 > ℹ️ Temporary add-ons are removed when Firefox closes. For persistent installation, the extension must be signed by Mozilla, or set `xpinstall.signatures.required = false` in `about:config` (development only).
+
+#### Chrome / Chromium
+
+1. Open Chrome → navigate to `chrome://extensions`
+2. Enable **"Developer mode"** (toggle in the top-right corner)
+3. Click **"Load unpacked"**
+4. Select the `extension/` directory in this repository
+5. The 🔐 pwledger icon appears in the toolbar (you may need to pin it)
+6. **Copy the extension ID** from the card and update `allowed_origins` in `pwledger-chrome.json`
+
+> ℹ️ After updating `allowed_origins`, restart Chrome for the native host to be recognized.
 
 ### Verifying the Connection
 
@@ -449,11 +545,13 @@ Or use the setup script from Developer PowerShell:
 <details>
 <summary><strong>"Native host not found" / "Host not found"</strong></summary>
 
-- The manifest file must exist at the exact path Firefox expects (see platform instructions above)
+- The manifest file must exist at the exact path your browser expects (see platform instructions above)
 - The `"path"` inside the manifest must be an **absolute path** to `pwledger-host` (or `.exe`)
 - On Linux/macOS: verify the binary is executable (`chmod +x`)
 - The manifest filename on disk must match the `"name"` field exactly: `pwledger.json` → `"pwledger"`
-- **Restart Firefox** after any manifest or registry changes
+- **Chrome:** verify `allowed_origins` contains your extension ID with a trailing slash
+- **Firefox:** verify `allowed_extensions` contains `pwledger@harun.dev`
+- **Restart your browser** after any manifest or registry changes
 </details>
 
 <details>
@@ -480,6 +578,80 @@ Or use the setup script from Developer PowerShell:
 - The page must have a `<input type="password">` field
 - Some pages with complex shadow DOM structures may not be detected — use the popup's **Fill** button as a fallback
 </details>
+
+### Signing & Distribution
+
+By default the extension must be reloaded after every browser restart. To install it permanently, it needs to be **signed** (Firefox) or **published** (Chrome Web Store).
+
+#### Prerequisites
+
+```bash
+# Install web-ext globally (or use npx)
+npm install -g web-ext
+```
+
+#### Packaging
+
+The included script creates clean `.zip` files for both stores:
+
+```bash
+chmod +x package-extension.sh
+./package-extension.sh
+```
+
+This produces:
+
+| Output | Purpose |
+|---|---|
+| `dist/pwledger-<version>-firefox.zip` | Upload to AMO or pass to `web-ext sign` |
+| `dist/pwledger-<version>-chrome.zip` | Upload to Chrome Web Store |
+
+#### Firefox — Self-Distributed Signing (Recommended for Personal Use)
+
+Mozilla allows you to sign extensions for **self-distribution** without publishing them publicly. The signed `.xpi` can be installed permanently.
+
+1. **Get API credentials** from [addons.mozilla.org/developers/addon/api/key/](https://addons.mozilla.org/developers/addon/api/key/)
+
+2. **Sign the extension:**
+
+   ```bash
+   export WEB_EXT_API_KEY="your-jwt-issuer"
+   export WEB_EXT_API_SECRET="your-jwt-secret"
+
+   ./package-extension.sh --sign-firefox --channel unlisted
+   ```
+
+3. **Install the signed .xpi:**
+   - Open Firefox → `about:addons`
+   - Click the gear icon → **"Install Add-on From File…"**
+   - Select `dist/pwledger-<version>-firefox.xpi`
+   - The extension persists across restarts ✅
+
+#### Firefox — Public AMO Listing
+
+1. Go to [addons.mozilla.org/developers/addon/submit/](https://addons.mozilla.org/developers/addon/submit/)
+2. Upload `dist/pwledger-<version>-firefox.zip`
+3. Follow the review process (may take 1–7 days)
+
+#### Chrome Web Store
+
+1. Pay the one-time [$5 developer registration fee](https://chrome.google.com/webstore/devconsole)
+2. Go to the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole)
+3. Click **"New item"** → upload `dist/pwledger-<version>-chrome.zip`
+4. Fill in the store listing details and submit for review
+
+#### Quick Reference: web-ext Commands
+
+```bash
+# Run extension in a temporary Firefox profile for testing
+npx web-ext run --source-dir=./extension
+
+# Lint the extension for AMO policy compliance
+npx web-ext lint --source-dir=./extension
+
+# Build a .zip without signing
+npx web-ext build --source-dir=./extension --artifacts-dir=./dist --overwrite-dest
+```
 
 ---
 
@@ -549,19 +721,18 @@ Clipboard operations are an inherent security concession (any process under the 
 
 ## Known Limitations
 
-- **No automatic clipboard clear** — the `clip-clear` command must be used manually (auto-clear timer planned)
 - **Master password in transit** — sent as plaintext JSON over the native messaging pipe; intermediary buffers are zeroed but JSON parser may retain copies
-- **Temporary extension** — unsigned, must be reloaded after each Firefox restart
 - **Single-user, single-process** — no concurrent access protection; don't run CLI and extension against the same vault simultaneously
+- **JSON parser copies** — nlohmann/json may retain internal copies of the password string during parsing; these are outside our zeroing reach
 
 ---
 
 ## Roadmap
 
-- [ ] Encrypted persistence (Argon2id KDF → XChaCha20-Poly1305 file)
-- [ ] Automatic clipboard clear after configurable timeout
-- [ ] Chrome / Chromium support
-- [ ] Extension signing for persistent installation
+- [x] Encrypted persistence (Argon2id KDF → XChaCha20-Poly1305)
+- [x] Automatic clipboard clear after configurable timeout
+- [x] Chrome / Chromium support
+- [x] Extension signing for persistent installation
 - [ ] Vault export / import
 - [ ] Password strength scoring (zxcvbn)
 - [ ] Password reuse detection

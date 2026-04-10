@@ -19,6 +19,7 @@
 #ifndef PWLEDGER_CLI_APP_STATE_H
 #define PWLEDGER_CLI_APP_STATE_H
 
+#include <pwledger/ClipboardTimer.h>
 #include <pwledger/Config.h>
 #include <pwledger/PrimaryTable.h>
 #include <pwledger/Secret.h>
@@ -33,6 +34,7 @@ struct AppState {
   pwledger::PrimaryTable table;
   pwledger::Secret master_password{1};  // placeholder until initialized
   std::filesystem::path vault_path;
+  pwledger::ClipboardTimer clipboard_timer;  // auto-clear clipboard after copy
 };
 
 }  // namespace pwledger

@@ -49,6 +49,26 @@ document.addEventListener('DOMContentLoaded', () => {
     masterPassword.value = '';
   }
 
+  // Clipboard auto-clear countdown. Each new copy resets the timer.
+  let clipCountdownId = null;
+  function startClipboardCountdown(seconds) {
+    if (clipCountdownId) clearInterval(clipCountdownId);
+    let remaining = seconds;
+    vaultMsg.textContent = `Copied! Clearing in ${remaining}s…`;
+    vaultMsg.style.color = '#008000';
+    clipCountdownId = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(clipCountdownId);
+        clipCountdownId = null;
+        vaultMsg.textContent = 'Clipboard cleared.';
+        setTimeout(() => { vaultMsg.textContent = ''; }, 2000);
+      } else {
+        vaultMsg.textContent = `Copied! Clearing in ${remaining}s…`;
+      }
+    }, 1000);
+  }
+
   // --------------------------------------------------------------------------
   // Native host communication
   // --------------------------------------------------------------------------
@@ -295,9 +315,10 @@ document.addEventListener('DOMContentLoaded', () => {
         vaultMsg.style.color = '#333';
         sendCommand('copy', { uuid: entry.uuid }).then(res => {
           if (res && res.status === 'ok') {
-            vaultMsg.textContent = 'Copied to clipboard!';
-            vaultMsg.style.color = '#008000';
-            setTimeout(() => { vaultMsg.textContent = ''; }, 3000);
+            // Start auto-clear countdown (native host handles the actual clear,
+            // but we also show a visual countdown in the popup).
+            const CLEAR_SECONDS = 20;
+            startClipboardCountdown(CLEAR_SECONDS);
           } else {
             vaultMsg.textContent = res?.message || 'Error copying';
             vaultMsg.style.color = '#d10000';

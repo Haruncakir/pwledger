@@ -38,10 +38,8 @@
 // Clipboard operations are inherently insecure: other processes running under
 // the same user session can read the clipboard at any time. Providing this
 // feature is a usability concession. Callers should invoke clipboard_clear()
-// as soon as the secret is no longer needed.
-//
-// TODO(#issue-N): enforce auto-clear after a configurable timeout once the
-// threading model is established.
+// as soon as the secret is no longer needed. Auto-clear after a configurable
+// timeout is handled by ClipboardTimer.
 //
 // FAILURE MODEL
 // -------------

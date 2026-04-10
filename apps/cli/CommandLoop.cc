@@ -159,6 +159,14 @@ void cmd_copy(AppState& state) {
   entry->plaintext_secret.with_read_access([&](std::span<const char> buf) {
     clipboard_write(std::string_view(buf.data(), ::strnlen(buf.data(), buf.size())));
   });
+
+  const int timeout = state.config.security.clear_clipboard_seconds;
+  if (timeout > 0) {
+    state.clipboard_timer.schedule(timeout);
+    std::cout << "Copied. Clipboard will auto-clear in " << timeout << "s.\n";
+  } else {
+    std::cout << "Copied to clipboard.\n";
+  }
 }
 
 void cmd_clip_clear(AppState& /*state*/) {

@@ -21,6 +21,7 @@
 #include "NativeMessaging.h"
 #include "ResponseHelpers.h"
 
+#include <pwledger/ClipboardTimer.h>
 #include <pwledger/PrimaryTable.h>
 
 #include <iostream>
@@ -109,6 +110,7 @@ const std::unordered_map<std::string, CommandDescriptor> kCommands{
 void run_message_loop(const Config& cfg) {
   PrimaryTable table;
   VaultState   state = VaultState::Locked;
+  ClipboardTimer clip_timer;
 
   for (;;) {
     auto raw = read_message();
@@ -137,6 +139,14 @@ void run_message_loop(const Config& cfg) {
         response = make_error("Locked", req_id);
       } else {
         response = it->second.handle(req, state, table, cfg, req_id);
+
+        // Schedule auto-clear after a successful clipboard copy.
+        if (response.value("status", "") == "ok" && cmd == "copy") {
+          const int timeout = cfg.security.clear_clipboard_seconds;
+          if (timeout > 0) {
+            clip_timer.schedule(timeout);
+          }
+        }
       }
     } catch (const json::parse_error&) {
       response = make_error("Invalid JSON", req_id);
@@ -151,3 +161,4 @@ void run_message_loop(const Config& cfg) {
 }
 
 }  // namespace pwledger
+

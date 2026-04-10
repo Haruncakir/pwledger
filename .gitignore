@@ -45,6 +45,7 @@
 build/
 build-windows/
 compile_commands.json
+dist/
 
 # Emacs
 *~
