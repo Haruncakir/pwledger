@@ -67,6 +67,10 @@ enum class VaultState {
 [[nodiscard]] nlohmann::json handle_clip_clear(const nlohmann::json& req,
                                                 std::optional<nlohmann::json> id);
 
+[[nodiscard]] nlohmann::json handle_get_credentials(const nlohmann::json& req,
+                                                     PrimaryTable& table,
+                                                     std::optional<nlohmann::json> id);
+
 }  // namespace pwledger
 
 #endif  // PWLEDGER_HOST_COMMAND_HANDLERS_H

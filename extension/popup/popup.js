@@ -264,6 +264,29 @@ document.addEventListener('DOMContentLoaded', () => {
       info.appendChild(pk);
       info.appendChild(user);
 
+      const btnGroup = document.createElement('div');
+      btnGroup.className = 'btn-group';
+
+      // Fill button — injects credentials into the active tab
+      const fillBtn = document.createElement('button');
+      fillBtn.className = 'fill-btn';
+      fillBtn.textContent = 'Fill';
+      fillBtn.addEventListener('click', () => {
+        vaultMsg.textContent = 'Filling…';
+        vaultMsg.style.color = '#333';
+        sendCommand('fill_credentials', { uuid: entry.uuid, from_popup: true }).then(res => {
+          if (res && res.status === 'ok') {
+            vaultMsg.textContent = 'Credentials filled!';
+            vaultMsg.style.color = '#008000';
+            setTimeout(() => { vaultMsg.textContent = ''; }, 3000);
+          } else {
+            vaultMsg.textContent = res?.message || 'Error filling';
+            vaultMsg.style.color = '#d10000';
+          }
+        });
+      });
+
+      // Copy button — copies password to clipboard
       const copyBtn = document.createElement('button');
       copyBtn.className = 'copy-btn';
       copyBtn.textContent = 'Copy';
@@ -282,8 +305,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       });
 
+      btnGroup.appendChild(fillBtn);
+      btnGroup.appendChild(copyBtn);
+
       item.appendChild(info);
-      item.appendChild(copyBtn);
+      item.appendChild(btnGroup);
       resultsContainer.appendChild(item);
     });
   }

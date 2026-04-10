@@ -217,4 +217,44 @@ namespace pwledger {
   return make_ok(id);
 }
 
+// ----------------------------------------------------------------------------
+// handle_get_credentials
+// ----------------------------------------------------------------------------
+// Returns the username and plaintext password for the specified UUID.
+// The password is extracted from sodium-hardened memory, placed into a
+// temporary std::string for JSON serialization, then wiped with
+// sodium_memzero before this function returns.
+[[nodiscard]] json handle_get_credentials(const json&    req,
+                                          PrimaryTable&  table,
+                                          std::optional<json> id) {
+  const std::string uuid_str = req.value("uuid", "");
+  const auto uuid = Uuid::from_string(uuid_str);
+
+  if (!uuid) {
+    return make_error("Invalid UUID", id);
+  }
+
+  auto it = table.find(*uuid);
+  if (it == table.end()) {
+    return make_error("Not found", id);
+  }
+
+  // Extract password into a temporary std::string for JSON serialization.
+  std::string password;
+  it->second.plaintext_secret.with_read_access([&](std::span<const char> buf) {
+    const std::size_t len = ::strnlen(buf.data(), buf.size());
+    password.assign(buf.data(), len);
+  });
+
+  json r = make_ok(id);
+  r["username"] = it->second.username_or_email;
+  r["password"] = password;
+
+  it->second.metadata.last_used_at = std::chrono::system_clock::now();
+
+  // Wipe the temporary copy before it goes out of scope.
+  sodium_memzero(password.data(), password.size());
+  return r;
+}
+
 }  // namespace pwledger

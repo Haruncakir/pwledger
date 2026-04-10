@@ -84,17 +84,22 @@ json dispatch_clip_clear(const json& req, VaultState& /*state*/,
                          PrimaryTable& /*table*/, const Config& /*cfg*/, std::optional<json> id) {
   return handle_clip_clear(req, std::move(id));
 }
+json dispatch_get_credentials(const json& req, VaultState& /*state*/,
+                              PrimaryTable& table, const Config& /*cfg*/, std::optional<json> id) {
+  return handle_get_credentials(req, table, std::move(id));
+}
 
 }  // anonymous namespace
 
 const std::unordered_map<std::string, CommandDescriptor> kCommands{
-  { "ping",        { /*requires_unlock=*/false, dispatch_ping        } },
-  { "unlock",      { /*requires_unlock=*/false, dispatch_unlock      } },
-  { "lock",        { /*requires_unlock=*/false, dispatch_lock        } },
-  { "init_vault",  { /*requires_unlock=*/false, dispatch_init_vault  } },
-  { "search",      { /*requires_unlock=*/true,  dispatch_search      } },
-  { "copy",        { /*requires_unlock=*/true,  dispatch_copy        } },
-  { "clip_clear",  { /*requires_unlock=*/false, dispatch_clip_clear  } },
+  { "ping",              { /*requires_unlock=*/false, dispatch_ping              } },
+  { "unlock",            { /*requires_unlock=*/false, dispatch_unlock            } },
+  { "lock",              { /*requires_unlock=*/false, dispatch_lock              } },
+  { "init_vault",        { /*requires_unlock=*/false, dispatch_init_vault        } },
+  { "search",            { /*requires_unlock=*/true,  dispatch_search            } },
+  { "copy",              { /*requires_unlock=*/true,  dispatch_copy              } },
+  { "clip_clear",        { /*requires_unlock=*/false, dispatch_clip_clear        } },
+  { "get_credentials",   { /*requires_unlock=*/true,  dispatch_get_credentials   } },
 };
 
 // ============================================================================
