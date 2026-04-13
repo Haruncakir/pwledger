@@ -44,9 +44,15 @@ protected:
   }
 
   void SetUp() override {
-    test_vault_path = std::filesystem::temp_directory_path() / "pwledger_test_vault.dat";
+    // Unique path per test to avoid parallel execution collisions on Windows
+    auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    std::string filename = std::string("pwledger_test_")
+                         + info->test_suite_name() + "_"
+                         + info->name() + ".dat";
+    test_vault_path = std::filesystem::temp_directory_path() / filename;
+
     if (std::filesystem::exists(test_vault_path)) {
-      std::filesystem::remove(test_vault_path);
+        std::filesystem::remove(test_vault_path);
     }
   }
 

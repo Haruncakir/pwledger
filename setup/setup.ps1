@@ -292,7 +292,7 @@ Write-Ok "Build complete: $BuildDir\"
 
 # Print output paths.
 $CliExe  = Join-Path $BuildDir 'apps\pwledger-cli.exe'
-$HostExe = Join-Path $BuildDir 'apps\native_host\pwledger-host.exe'
+$HostExe = Join-Path $BuildDir "apps\$BuildType\pwledger-host.exe"
 if (Test-Path $CliExe)  { Write-Info "CLI:         $((Resolve-Path $CliExe).Path)" }
 if (Test-Path $HostExe) { Write-Info "Native host: $((Resolve-Path $HostExe).Path)" }
 
@@ -318,7 +318,14 @@ if ($RegisterExtension) {
     Write-Step "Registering Firefox native host manifest"
 
     $HostExeAbs = $null
-    $Candidate  = Join-Path $ScriptDir "$BuildDir\apps\native_host\pwledger-host.exe"
+    $Candidate = Join-Path $ScriptDir "$BuildDir\apps\$BuildType\pwledger-host.exe"
+    if (-not (Test-Path $Candidate)) {
+        # MSBuild multi-config: try Debug/Release subdir
+        foreach ($cfg in @($BuildType, 'Debug', 'Release', 'RelWithDebInfo')) {
+            $try = Join-Path $ScriptDir "$BuildDir\apps\$cfg\pwledger-host.exe"
+            if (Test-Path $try) { $Candidate = $try; break }
+        }
+    }
 
     if (Test-Path $Candidate) {
         $HostExeAbs = (Resolve-Path $Candidate).Path
@@ -342,7 +349,7 @@ if ($RegisterExtension) {
   "description": "pwledger native messaging host",
   "path": "$HostExeJson",
   "type": "stdio",
-  "allowed_extensions": ["pwledger@example.com"]
+  "allowed_extensions": ["pwledger@harun.dev"]
 }
 "@
     Set-Content -Path $ManifestDest -Value $ManifestContent -Encoding UTF8

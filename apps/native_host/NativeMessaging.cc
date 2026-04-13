@@ -19,6 +19,7 @@
 #include "NativeMessaging.h"
 
 #include <iostream>
+#include <bit>
 
 namespace pwledger {
 
@@ -27,7 +28,7 @@ namespace pwledger {
 // little-endian, which matches the Native Messaging specification. A
 // static_assert below guards this assumption.
 static_assert(
-    __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
+    std::endian::native == std::endian::little,
     "Native Messaging length prefix assumes little-endian byte order. "
     "Add a byte-swap here for big-endian platforms.");
 

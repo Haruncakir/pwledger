@@ -94,6 +94,11 @@ if(WIN32)
 endif()
 
 if(MSVC)
+    # Force consistent static CRT linkage across all targets
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+if(MSVC)
     message(STATUS "Configuring for Microsoft Visual C++")
     include(PwledgerCompilerMSVC)
 else()

@@ -30,9 +30,15 @@ using namespace pwledger;
 class ConfigTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    test_config_path = std::filesystem::temp_directory_path() / "pwledger_test_config.json";
+    // Use the test name to make the path unique per test case
+    auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    std::string filename = std::string("pwledger_test_") 
+                         + info->test_suite_name() + "_" 
+                         + info->name() + ".json";
+    test_config_path = std::filesystem::temp_directory_path() / filename;
+    
     if (std::filesystem::exists(test_config_path)) {
-      std::filesystem::remove(test_config_path);
+        std::filesystem::remove(test_config_path);
     }
   }
 
@@ -43,8 +49,11 @@ protected:
   }
 
   void write_json(const std::string& content) {
-    std::ofstream ofs(test_config_path);
-    ofs << content;
+    {
+        std::ofstream ofs(test_config_path);
+        ofs << content;
+        ofs.flush();
+    } // ofs destructor closes the file here before we return
   }
 
   std::filesystem::path test_config_path;

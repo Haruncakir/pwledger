@@ -27,10 +27,11 @@
 #  SODIUM_ROOT_DIR - Root directory to search for libsodium
 
 find_package(PkgConfig QUIET)
-if(PKG_CONFIG_FOUND)
+if(PKG_CONFIG_FOUND AND NOT (WIN32 AND DEFINED VCPKG_TARGET_TRIPLET))
+    # Skip pkg-config on Windows+vcpkg: the toolchain sets PKG_CONFIG_PATH
+    # with backslashes that crash CMake 4.0's FindPkgConfig module.
     pkg_check_modules(PC_SODIUM QUIET libsodium)
     if(PC_SODIUM_FOUND)
-        # Convert Windows backslashes to CMake-friendly forward slashes
         file(TO_CMAKE_PATH "${PC_SODIUM_LIBRARY_DIRS}" PC_SODIUM_LIBRARY_DIRS)
         file(TO_CMAKE_PATH "${PC_SODIUM_INCLUDE_DIRS}" PC_SODIUM_INCLUDE_DIRS)
     endif()
