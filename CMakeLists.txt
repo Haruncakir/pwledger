@@ -83,6 +83,16 @@ add_compile_definitions(
     $<$<BOOL:${PWLEDGER_ENABLE_SECURITY_HARDENING}>:PWLEDGER_SECURITY_HARDENED=1>
 )
 
+# CMake 4.0 on Windows: normalize PKG_CONFIG_PATH to avoid invalid escape errors
+if(WIN32)
+    get_filename_component(VCPKG_INSTALLED_NORM
+        "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}"
+        ABSOLUTE)
+    file(TO_CMAKE_PATH "${VCPKG_INSTALLED_NORM}" VCPKG_INSTALLED_NORM)
+    set(ENV{PKG_CONFIG_PATH}
+        "${VCPKG_INSTALLED_NORM}/lib/pkgconfig;${VCPKG_INSTALLED_NORM}/debug/lib/pkgconfig")
+endif()
+
 if(MSVC)
     message(STATUS "Configuring for Microsoft Visual C++")
     include(PwledgerCompilerMSVC)

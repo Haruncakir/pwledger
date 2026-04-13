@@ -110,7 +110,7 @@ function Compare-Versions {
     return $a -ge $b
 }
 
-# Script root — the directory containing this script (i.e., the repo root).
+# Script root - the directory containing this script (i.e., the repo root).
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DepsDir   = Join-Path $ScriptDir '.deps'
 
@@ -123,7 +123,7 @@ $LibsodiumMsvcVersion = '1.0.18'
 $LibsodiumMsvcUrl     = "https://download.libsodium.org/libsodium/releases/libsodium-${LibsodiumMsvcVersion}-msvc.zip"
 
 # -----------------------------------------------------------------------------
-# Step 1 — Validate build tools
+# Step 1 - Validate build tools
 # -----------------------------------------------------------------------------
 Write-Step "Checking build tools"
 
@@ -164,7 +164,7 @@ if (-not (Test-CommandExists 'git')) {
 Write-Ok "git $(Get-VersionFromString (git --version))"
 
 # -----------------------------------------------------------------------------
-# Step 2 — Install / locate libsodium
+# Step 2 - Install / locate libsodium
 # -----------------------------------------------------------------------------
 Write-Step "Setting up libsodium"
 
@@ -244,7 +244,7 @@ if ($SkipDeps) {
 }
 
 # -----------------------------------------------------------------------------
-# Step 3 — Configure CMake
+# Step 3 - Configure CMake
 # -----------------------------------------------------------------------------
 Write-Step "Configuring CMake"
 
@@ -263,7 +263,7 @@ $CmakeArgs = @(
 
 # Attach vcpkg toolchain if vcpkg was used.
 if (-not $LibsodiumManual -and -not $SkipDeps) {
-    $ToolchainFile = Join-Path $VcpkgRoot 'scripts\buildsystems\vcpkg.cmake'
+    $ToolchainFile = (Join-Path $VcpkgRoot 'scripts\buildsystems\vcpkg.cmake') -replace '\\', '/'
     if (Test-Path $ToolchainFile) {
         $CmakeArgs += "-DCMAKE_TOOLCHAIN_FILE=$ToolchainFile"
         $CmakeArgs += '-DVCPKG_TARGET_TRIPLET=x64-windows-static'
@@ -276,12 +276,12 @@ if ($CmakePrefixPath -ne '') {
 }
 
 Write-Info "cmake $($CmakeArgs -join ' ')"
-& cmake @CmakeArgs
+& cmake @CmakeArgs ..
 if ($LASTEXITCODE -ne 0) { Fail "CMake configuration failed." }
 Write-Ok "CMake configuration complete"
 
 # -----------------------------------------------------------------------------
-# Step 4 — Build
+# Step 4 - Build
 # -----------------------------------------------------------------------------
 Write-Step "Building"
 
@@ -297,7 +297,7 @@ if (Test-Path $CliExe)  { Write-Info "CLI:         $((Resolve-Path $CliExe).Path
 if (Test-Path $HostExe) { Write-Info "Native host: $((Resolve-Path $HostExe).Path)" }
 
 # -----------------------------------------------------------------------------
-# Step 5 — Tests
+# Step 5 - Tests
 # -----------------------------------------------------------------------------
 if (-not $NoTests) {
     Write-Step "Running tests"
@@ -312,7 +312,7 @@ if (-not $NoTests) {
 }
 
 # -----------------------------------------------------------------------------
-# Step 6 — Register Firefox native host manifest
+# Step 6 - Register Firefox native host manifest
 # -----------------------------------------------------------------------------
 if ($RegisterExtension) {
     Write-Step "Registering Firefox native host manifest"
@@ -365,7 +365,7 @@ if ($RegisterExtension) {
     Write-Info ""
     Write-Info "To verify the native host is reachable:"
     Write-Info "  Run $HostExeAbs directly in PowerShell."
-    Write-Info "  It will block on stdin — that is normal. Press Ctrl-C to exit."
+    Write-Info "  It will block on stdin - that is normal. Press Ctrl-C to exit."
 }
 
 # -----------------------------------------------------------------------------

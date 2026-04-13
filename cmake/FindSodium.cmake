@@ -29,6 +29,11 @@
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
     pkg_check_modules(PC_SODIUM QUIET libsodium)
+    if(PC_SODIUM_FOUND)
+        # Convert Windows backslashes to CMake-friendly forward slashes
+        file(TO_CMAKE_PATH "${PC_SODIUM_LIBRARY_DIRS}" PC_SODIUM_LIBRARY_DIRS)
+        file(TO_CMAKE_PATH "${PC_SODIUM_INCLUDE_DIRS}" PC_SODIUM_INCLUDE_DIRS)
+    endif()
 endif()
 
 find_path(SODIUM_INCLUDE_DIR

@@ -60,8 +60,8 @@ Pick the guide that matches your setup. Each one takes you from a fresh clone to
 **Option A — Automated setup (recommended)**
 
 ```bash
-git clone https://github.com/user/passwordledger.git
-cd passwordledger
+git clone https://github.com/Haruncakir/pwledger.git
+cd pwledger
 
 # Installs dependencies, configures, builds, and runs tests
 ./setup/setup.sh
@@ -113,8 +113,8 @@ The setup script auto-detects your distro (Ubuntu/Debian, Arch, Fedora, openSUSE
 **Option A — Automated setup**
 
 ```bash
-git clone https://github.com/user/passwordledger.git
-cd passwordledger
+git clone https://github.com/Haruncakir/pwledger.git
+cd pwledger
 ./setup/setup.sh
 ```
 
@@ -157,8 +157,8 @@ cd passwordledger
 Open a **Developer PowerShell for VS 2022** and run:
 
 ```powershell
-git clone https://github.com/user/passwordledger.git
-cd passwordledger
+git clone https://github.com/Haruncakir/pwledger.git
+cd pwledger
 
 # Installs libsodium via vcpkg, configures, builds, runs tests
 .\setup\setup.ps1
