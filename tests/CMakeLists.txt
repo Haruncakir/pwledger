@@ -46,6 +46,10 @@ add_executable(test_vault
     test_vault.cc
 )
 
+target_compile_definitions(test_vault PRIVATE
+    PWLEDGER_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+)
+
 target_link_libraries(test_vault 
     PRIVATE 
         pwledger_core 

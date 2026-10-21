@@ -1,0 +1,81 @@
+{
+  "entries": [
+    {
+      "created_at_s": 1700000000,
+      "expires_at_s": 1750000000,
+      "last_modified_at_s": 1700050000,
+      "last_used_at_s": 1700100000,
+      "note": "Work GitHub account with SSH key configured",
+      "plaintext_secret": "CorrectHorseBatteryStaple2026!",
+      "primary_key": "github.com",
+      "reuse_count": 0,
+      "salt": "salt_github_16b!",
+      "strength_score": 95,
+      "two_fa_enabled": true,
+      "username_or_email": "alice_developer",
+      "uuid": "72ed79dd-46b8-4140-86e3-c421ca7b66fb"
+    },
+    {
+      "created_at_s": 1710000000,
+      "expires_at_s": 0,
+      "last_modified_at_s": 1710050000,
+      "last_used_at_s": 1710090000,
+      "note": "Kişisel banka hesabı - şifre sıfırlama sorusu: Kadıköy",
+      "plaintext_secret": "P@sswörd_Türkçe_2026!çşğüöı",
+      "primary_key": "İstanbul Finans Kurumu",
+      "reuse_count": 1,
+      "salt": "salt_ist_bank_16",
+      "strength_score": 88,
+      "two_fa_enabled": false,
+      "username_or_email": "hüseyin.özkan@örnek.com",
+      "uuid": "94fcab9b-ddb9-492a-974e-9e9580fc09b9"
+    },
+    {
+      "created_at_s": 1720000000,
+      "expires_at_s": 0,
+      "last_modified_at_s": 1720000000,
+      "last_used_at_s": 0,
+      "note": "",
+      "plaintext_secret": "n0_n0tes_n0_2fa",
+      "primary_key": "internal-router",
+      "reuse_count": 3,
+      "salt": "salt_router_16b!",
+      "strength_score": 40,
+      "two_fa_enabled": false,
+      "username_or_email": "admin",
+      "uuid": "470bf286-f59d-49f0-b7d9-fa924980e593"
+    },
+    {
+      "created_at_s": 1730000000,
+      "expires_at_s": 1800000000,
+      "last_modified_at_s": 1730005000,
+      "last_used_at_s": 1730010000,
+      "note": "=== Bastion Deployment Notes ===\nRecovery Codes:\n1. ABCD-EFGH-1234\n2. IJKL-MNOP-5678\n3. QRST-UVWX-9012\nSSH Public Key Block:\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine0 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine1 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine2 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine3 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine4 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine5 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine6 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine7 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine8 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine9 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine10 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine11 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine12 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine13 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine14 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine15 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine16 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine17 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine18 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine19 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine20 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine21 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine22 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine23 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine24 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine25 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine26 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine27 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine28 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine29 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine30 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine31 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine32 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine33 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine34 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine35 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine36 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine37 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine38 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine39 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine40 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine41 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine42 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine43 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine44 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine45 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine46 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine47 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine48 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine49 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine50 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine51 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine52 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine53 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine54 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine55 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine56 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine57 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine58 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine59 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine60 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine61 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine62 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine63 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine64 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine65 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine66 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine67 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine68 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine69 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine70 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine71 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine72 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine73 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine74 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine75 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine76 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine77 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine78 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine79 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine80 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine81 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine82 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine83 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine84 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine85 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine86 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine87 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine88 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine89 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine90 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine91 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine92 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine93 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine94 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine95 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine96 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine97 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine98 ops@example.internal\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyBlockForTestingPurposesOnlyLine99 ops@example.internal\n",
+      "plaintext_secret": "VaultSuperSecretPassphrase!99",
+      "primary_key": "bastion.prod.internal",
+      "reuse_count": 0,
+      "salt": "salt_bastion_16!",
+      "strength_score": 100,
+      "two_fa_enabled": true,
+      "username_or_email": "ops_admin",
+      "uuid": "5d6eb682-b06c-43fe-94e9-66b123e9dc1d"
+    },
+    {
+      "created_at_s": 1735000000,
+      "expires_at_s": 1790000000,
+      "last_modified_at_s": 1735050000,
+      "last_used_at_s": 1735090000,
+      "note": "Zwei-Faktor-Authentifizierung aktiv",
+      "plaintext_secret": "ÜberGeheimesPasswort#2026!",
+      "primary_key": "München Cloud Dienste",
+      "reuse_count": 0,
+      "salt": "salt_munich_16b!",
+      "strength_score": 90,
+      "two_fa_enabled": true,
+      "username_or_email": "jürgen.müller@münchen.de",
+      "uuid": "9679a90a-c0b2-41ee-80bb-64fdd2d93939"
+    }
+  ],
+  "entry_count": 5,
+  "master_password": "TestFixtureMasterPassword2026!@#"
+}

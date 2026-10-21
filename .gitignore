@@ -60,6 +60,7 @@ compile_commands.json
 *.dat.tmp
 *.pwl
 *.pwl.tmp
+!tests/fixtures/*.pwl
 *.vault
 pwledger_test_*
 

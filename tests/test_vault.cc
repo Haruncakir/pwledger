@@ -30,7 +30,10 @@
 #include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
+
+#include <nlohmann/json.hpp>
 
 using namespace pwledger;
 
@@ -205,4 +208,103 @@ TEST_F(VaultTest, FullVaultIORoundtrip) {
   it->second.plaintext_secret.with_read_access([](std::span<const char> buf) {
     EXPECT_STREQ(buf.data(), "my_secret_token");
   });
+}
+
+TEST_F(VaultTest, TestVaultCompatibility) {
+  std::filesystem::path fixture_dir;
+#ifdef PWLEDGER_TEST_FIXTURES_DIR
+  fixture_dir = PWLEDGER_TEST_FIXTURES_DIR;
+#else
+  fixture_dir = std::filesystem::current_path() / "tests" / "fixtures";
+#endif
+  if (!std::filesystem::exists(fixture_dir / "v1_original_vault.pwl")) {
+    fixture_dir = std::filesystem::current_path() / "fixtures";
+  }
+
+  std::filesystem::path pwl_path = fixture_dir / "v1_original_vault.pwl";
+  std::filesystem::path json_path = fixture_dir / "v1_original_vault.expected.json";
+
+  ASSERT_TRUE(std::filesystem::exists(pwl_path)) << "Missing fixture: " << pwl_path;
+  ASSERT_TRUE(std::filesystem::exists(json_path)) << "Missing expected JSON: " << json_path;
+
+  // 1. Parse expected JSON
+  std::ifstream j_file(json_path);
+  ASSERT_TRUE(j_file.is_open());
+  nlohmann::json expected_json;
+  j_file >> expected_json;
+
+  std::string master_password = expected_json.value("master_password", "");
+  ASSERT_FALSE(master_password.empty());
+  std::size_t expected_count = expected_json.value<std::size_t>("entry_count", 0);
+  auto expected_entries = expected_json.value("entries", nlohmann::json::array());
+  ASSERT_EQ(expected_entries.size(), expected_count);
+
+  // 2. Open and decrypt the frozen fixture vault
+  PrimaryTable loaded = VaultIO::load_vault(pwl_path, master_password);
+  ASSERT_EQ(loaded.size(), expected_count);
+
+  // 3. Verify all entries match expected values
+  for (const auto& item : expected_entries) {
+    std::string uuid_str = item.value("uuid", "");
+    auto opt_uuid = Uuid::from_string(uuid_str);
+    ASSERT_TRUE(opt_uuid.has_value()) << "Failed to parse UUID: " << uuid_str;
+    Uuid uid = *opt_uuid;
+
+    auto it = loaded.find(uid);
+    ASSERT_NE(it, loaded.end()) << "Entry not found in loaded table: " << uuid_str;
+    const SecretEntry& entry = it->second;
+
+    EXPECT_EQ(entry.primary_key, item.value("primary_key", ""));
+    EXPECT_EQ(entry.username_or_email, item.value("username_or_email", ""));
+
+    // Verify secret
+    std::string exp_secret = item.value("plaintext_secret", "");
+    entry.plaintext_secret.with_read_access([&](std::span<const char> buf) {
+      std::string actual_secret(buf.data(), ::strnlen(buf.data(), buf.size()));
+      EXPECT_EQ(actual_secret, exp_secret);
+    });
+
+    // Verify timestamps (seconds resolution)
+    auto c_s = std::chrono::duration_cast<std::chrono::seconds>(entry.metadata.created_at.time_since_epoch()).count();
+    auto m_s = std::chrono::duration_cast<std::chrono::seconds>(entry.metadata.last_modified_at.time_since_epoch()).count();
+    auto u_s = std::chrono::duration_cast<std::chrono::seconds>(entry.metadata.last_used_at.time_since_epoch()).count();
+    EXPECT_EQ(c_s, item.value("created_at_s", 0LL));
+    EXPECT_EQ(m_s, item.value("last_modified_at_s", 0LL));
+    EXPECT_EQ(u_s, item.value("last_used_at_s", 0LL));
+
+    // Verify security policy
+    EXPECT_EQ(entry.security_policy.strength_score, item.value("strength_score", 0));
+    EXPECT_EQ(entry.security_policy.reuse_count, item.value("reuse_count", 0));
+    EXPECT_EQ(entry.security_policy.two_fa_enabled, item.value("two_fa_enabled", false));
+    EXPECT_EQ(entry.security_policy.note, item.value("note", ""));
+
+    int64_t exp_expires = item.value("expires_at_s", 0LL);
+    if (exp_expires > 0) {
+      ASSERT_TRUE(entry.security_policy.expires_at.has_value());
+      auto actual_exp = std::chrono::duration_cast<std::chrono::seconds>(entry.security_policy.expires_at->time_since_epoch()).count();
+      EXPECT_EQ(actual_exp, exp_expires);
+    } else {
+      EXPECT_FALSE(entry.security_policy.expires_at.has_value());
+    }
+  }
+
+  // 4. Verification that corrupted fixture FAILS to load (tamper test)
+  std::filesystem::path corrupt_temp = std::filesystem::temp_directory_path() / "corrupt_fixture_temp.pwl";
+  std::filesystem::copy_file(pwl_path, corrupt_temp, std::filesystem::copy_options::overwrite_existing);
+
+  // Flip byte at offset 40 (inside encrypted ciphertext payload)
+  {
+    std::fstream f(corrupt_temp, std::ios::in | std::ios::out | std::ios::binary);
+    ASSERT_TRUE(f.is_open());
+    f.seekp(40);
+    char b = 0;
+    f.get(b);
+    f.seekp(40);
+    b = static_cast<char>(b ^ 0x55);
+    f.put(b);
+    f.flush();
+  }
+
+  EXPECT_THROW(VaultIO::load_vault(corrupt_temp, master_password), std::runtime_error);
+  std::filesystem::remove(corrupt_temp);
 }
