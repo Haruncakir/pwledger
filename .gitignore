@@ -1,7 +1,18 @@
-# Prerequisites
-*.d
+# Build directories
+build/
+build-*/
+cmake-build-*/
+out/
+bin/
 
-# Compiled Object files
+# Dependencies
+.deps/
+
+# Distribution & packages
+dist/
+
+# Prerequisites & object files
+*.d
 *.slo
 *.lo
 *.o
@@ -11,22 +22,16 @@
 *.gch
 *.pch
 
-# Linker files
+# Linker & symbol files
 *.ilk
-
-# Debugger Files
 *.pdb
+*.exp
+*.map
 
-# Compiled Dynamic libraries
+# Compiled Dynamic & Static libraries
 *.so
 *.dylib
 *.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
 *.lai
 *.la
 *.a
@@ -37,17 +42,29 @@
 *.out
 *.app
 
-# debug information files
+# Debug information
 *.dwo
 
-.vscode
-.cache
-build/
-build-windows/
+# IDE & Editor files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.sln.docstates
+.cache/
 compile_commands.json
-dist/
 
-# Emacs
+# Vault files & test artifacts
+*.dat
+*.dat.tmp
+*.pwl
+*.pwl.tmp
+*.vault
+pwledger_test_*
+
+# Backup files
 *~
-\#*\#
-.\#*
+#*#
+.#*
+
