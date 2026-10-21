@@ -2,7 +2,7 @@
 
 **Initiative**: PWLedger Hardening & Refactoring Execution  
 **Current Phase**: Phase 3 (Refactor)  
-**Current Status**: Checkpoint 1 — Amendments Applied & CONSTRAINTS Proposals Submitted  
+**Current Status**: Checkpoint 2 Reached — Baseline & Fixture Verification Complete  
 **Last Updated**: 2026-10-21
 
 ---
@@ -12,7 +12,7 @@
 | Task ID | Theme / Scope | Target Branch | Commit SHA | Unit Tests | Sanitizers | Fixture OK? | Platforms Verified | Status |
 |---|---|---|---|---|---|---|---|---|
 | **TASK-01** | Baseline & V1 Compatibility Fixture | `main` | `0e8b910` | 22/22 passed | — | Pass (v1_original_vault.pwl) | Linux WSL2 (GCC 14.3) | ✅ Complete |
-| **TASK-02** | CMake Presets & Build Configurations | `main` | Completed | 23/23 passed | ASan+UBSan pass | Pass (v1_original_vault.pwl) | Linux WSL2 (GCC 14.3), Windows (MSVC 2022) | ✅ Complete |
+| **TASK-02** | CMake Presets & Build Configurations | `main` | `476ad6f` | 23/23 passed | ASan+UBSan pass | Pass (v1_original_vault.pwl) | Linux WSL2 (GCC 14.3), Windows (MSVC 2022) | ✅ Complete |
 | **TASK-03** | UUID Alignment & Libsodium CSPRNG (COR-01) | `refactor/core-crypto` | Pending | — | — | — | — | ⏳ Pending |
 | **TASK-04** | Explicit Secret Payload Length (SEC-01) | `refactor/core-crypto` | Pending | — | — | — | — | ⏳ Pending |
 | **TASK-05** | Secure Serialization Buffer (`SecureBuffer`) (SEC-02) | `refactor/core-crypto` | Pending | — | — | — | — | ⏳ Pending |
@@ -39,10 +39,12 @@
   - Plan amendments 1–4 and 6 applied to SPEC, TASKS, and ADRs.
   - CONSTRAINTS proposals formulated with technical justifications and submitted for user approval.
   - STOP and wait for user approval before touching source code.
-- [ ] **Checkpoint 2: Baseline & Fixture Verification (After TASK-02)**:
+- [x] **Checkpoint 2: Baseline & Fixture Verification (After TASK-02) (CURRENT CHECKPOINT)**:
   - Untouched baseline code builds cleanly.
-  - Compatibility fixture `v1_original_vault.pwl` generated with known credentials and committed.
-  - Compatibility test passes against the baseline commit.
+  - Compatibility fixture `v1_original_vault.pwl` generated with known credentials and committed (`0e8b910`).
+  - Compatibility test passes against the baseline commit and refactor tree.
+  - `CMakePresets.json` v3 tested on Linux (WSL) and Windows (MSVC 2022).
+  - STOP and wait for user approval before starting TASK-03.
 - [ ] **Checkpoint 3: Stage 2 Completion (TASK-03 to TASK-06)**:
   - Core crypto and safety hardening complete; zero unaligned UB; `SecureBuffer` active; bounds checks verified.
 - [ ] **Checkpoint 4: Stage 3 Completion (TASK-07 to TASK-09)**:
