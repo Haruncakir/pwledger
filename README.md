@@ -55,7 +55,7 @@ Pick the guide that matches your setup. Each one takes you from a fresh clone to
 
 ### 🐧 Linux / WSL
 
-> **Prerequisites:** GCC 11+ (or Clang 14+), CMake 3.15+, libsodium 1.0.18+
+> **Prerequisites:** GCC 11+ (or Clang 14+), CMake 3.21+ (for CMake Presets v3), libsodium 1.0.18+
 
 **Option A — Automated setup (recommended)**
 
@@ -108,7 +108,7 @@ The setup script auto-detects your distro (Ubuntu/Debian, Arch, Fedora, openSUSE
 
 ### 🍎 macOS
 
-> **Prerequisites:** Xcode Command Line Tools (or Clang 14+), CMake 3.15+, Homebrew
+> **Prerequisites:** Xcode Command Line Tools (or Clang 14+), CMake 3.21+ (for CMake Presets v3), Homebrew
 
 **Option A — Automated setup**
 
@@ -150,7 +150,7 @@ cd pwledger
 
 ### 🪟 Windows (Native)
 
-> **Prerequisites:** Visual Studio 2022 with **Desktop development with C++**, CMake, Git
+> **Prerequisites:** Visual Studio 2022 with **Desktop development with C++**, CMake 3.21+, Git
 
 **Option A — Automated setup (recommended)**
 
@@ -655,7 +655,9 @@ npx web-ext build --source-dir=./extension --artifacts-dir=./dist --overwrite-de
 
 ---
 
-## Build Options
+## Build Options & CMake Presets
+
+### Standard CMake Options
 
 | CMake Option | Default | Description |
 |---|---|---|
@@ -664,10 +666,33 @@ npx web-ext build --source-dir=./extension --artifacts-dir=./dist --overwrite-de
 | `PWLEDGER_ENABLE_STATIC_ANALYSIS` | `OFF` | clang-tidy / cppcheck integration |
 | `PWLEDGER_BUILD_TESTS` | `ON` | Build the GoogleTest suite |
 
+### CMake Presets (CMake 3.21+)
+
+`CMakePresets.json` provides unified configurations across platforms:
+
 ```bash
-# Example: Debug build with sanitizers
-cmake -B build -DCMAKE_BUILD_TYPE=Debug -DPWLEDGER_ENABLE_SANITIZERS=ON
-cmake --build build -j$(nproc)
+# List available presets on your platform
+cmake --list-presets
+
+# Default configuration (system generator, RelWithDebInfo)
+cmake --preset default
+cmake --build --preset default
+ctest --preset default
+
+# Linux with AddressSanitizer and UndefinedBehaviorSanitizer
+cmake --preset linux-asan
+cmake --build --preset linux-asan
+ctest --preset linux-asan
+
+# Windows MSVC (from Developer PowerShell)
+cmake --preset msvc-debug
+cmake --build --preset msvc-debug
+ctest --preset msvc-debug
+
+# MinGW GCC (Build and CTest only)
+cmake --preset gcc-debug
+cmake --build --preset gcc-debug
+ctest --preset gcc-debug
 ```
 
 ---

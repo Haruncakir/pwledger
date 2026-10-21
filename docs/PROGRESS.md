@@ -11,8 +11,8 @@
 
 | Task ID | Theme / Scope | Target Branch | Commit SHA | Unit Tests | Sanitizers | Fixture OK? | Platforms Verified | Status |
 |---|---|---|---|---|---|---|---|---|
-| **TASK-01** | Baseline & V1 Compatibility Fixture | `main` | Completed | 22/22 passed | — | Pass (v1_original_vault.pwl) | Linux WSL2 (GCC 14.3) | ✅ Complete |
-| **TASK-02** | CMake Presets & Build Configurations | `main` | Pending | — | — | — | — | ⏳ Pending |
+| **TASK-01** | Baseline & V1 Compatibility Fixture | `main` | `0e8b910` | 22/22 passed | — | Pass (v1_original_vault.pwl) | Linux WSL2 (GCC 14.3) | ✅ Complete |
+| **TASK-02** | CMake Presets & Build Configurations | `main` | Completed | 23/23 passed | ASan+UBSan pass | Pass (v1_original_vault.pwl) | Linux WSL2 (GCC 14.3), Windows (MSVC 2022) | ✅ Complete |
 | **TASK-03** | UUID Alignment & Libsodium CSPRNG (COR-01) | `refactor/core-crypto` | Pending | — | — | — | — | ⏳ Pending |
 | **TASK-04** | Explicit Secret Payload Length (SEC-01) | `refactor/core-crypto` | Pending | — | — | — | — | ⏳ Pending |
 | **TASK-05** | Secure Serialization Buffer (`SecureBuffer`) (SEC-02) | `refactor/core-crypto` | Pending | — | — | — | — | ⏳ Pending |

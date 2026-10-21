@@ -74,6 +74,14 @@ find_library(SODIUM_LIBRARY
         lib/Win32
         lib/Release
         lib/Debug
+        x64/Release/v143/dynamic
+        x64/Release/v143/static
+        x64/Release/v142/dynamic
+        x64/Release/v142/static
+        x64/Debug/v143/dynamic
+        x64/Debug/v143/static
+        x64/Debug/v142/dynamic
+        x64/Debug/v142/static
     DOC "libsodium library")
 
 # On Windows, search for debug library
@@ -93,6 +101,10 @@ if(WIN32)
             lib/x86
             lib/Win32
             lib/Debug
+            x64/Debug/v143/dynamic
+            x64/Debug/v143/static
+            x64/Debug/v142/dynamic
+            x64/Debug/v142/static
         DOC "libsodium debug library")
 endif()
 
