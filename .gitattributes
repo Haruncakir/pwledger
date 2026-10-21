@@ -1,0 +1,3 @@
+# Ensure vault fixtures and binary files are never modified by line ending conversions
+*.pwl binary
+tests/fixtures/** -text

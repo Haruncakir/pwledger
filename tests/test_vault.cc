@@ -210,6 +210,22 @@ TEST_F(VaultTest, FullVaultIORoundtrip) {
   });
 }
 
+namespace {
+std::string compute_file_sha256(const std::filesystem::path& path) {
+  std::ifstream f(path, std::ios::binary | std::ios::ate);
+  if (!f.is_open()) return "";
+  std::size_t size = static_cast<std::size_t>(f.tellg());
+  f.seekg(0);
+  std::vector<unsigned char> buf(size);
+  f.read(reinterpret_cast<char*>(buf.data()), static_cast<std::streamsize>(size));
+  unsigned char hash[crypto_hash_sha256_BYTES];
+  crypto_hash_sha256(hash, buf.data(), buf.size());
+  char hex[crypto_hash_sha256_BYTES * 2 + 1];
+  sodium_bin2hex(hex, sizeof(hex), hash, sizeof(hash));
+  return std::string(hex);
+}
+}  // namespace
+
 TEST_F(VaultTest, TestVaultCompatibility) {
   std::filesystem::path fixture_dir;
 #ifdef PWLEDGER_TEST_FIXTURES_DIR
@@ -223,11 +239,19 @@ TEST_F(VaultTest, TestVaultCompatibility) {
 
   std::filesystem::path pwl_path = fixture_dir / "v1_original_vault.pwl";
   std::filesystem::path json_path = fixture_dir / "v1_original_vault.expected.json";
+  std::filesystem::path payload_path = fixture_dir / "v1_original_payload.bin";
 
   ASSERT_TRUE(std::filesystem::exists(pwl_path)) << "Missing fixture: " << pwl_path;
   ASSERT_TRUE(std::filesystem::exists(json_path)) << "Missing expected JSON: " << json_path;
+  ASSERT_TRUE(std::filesystem::exists(payload_path)) << "Missing golden payload: " << payload_path;
 
-  // 1. Parse expected JSON
+  // 1. Assert SHA-256 digests
+  const std::string expected_pwl_sha256 = "46a5b14526cd540840569c10ae102ff44d64794b45beb77984269ef1ff91d462";
+  const std::string expected_payload_sha256 = "f653b20c460cf993f190c5a76084c578a5e25fcaa22876d978c38ac92945d23e";
+  EXPECT_EQ(compute_file_sha256(pwl_path), expected_pwl_sha256);
+  EXPECT_EQ(compute_file_sha256(payload_path), expected_payload_sha256);
+
+  // 2. Parse expected JSON
   std::ifstream j_file(json_path);
   ASSERT_TRUE(j_file.is_open());
   nlohmann::json expected_json;
@@ -239,11 +263,30 @@ TEST_F(VaultTest, TestVaultCompatibility) {
   auto expected_entries = expected_json.value("entries", nlohmann::json::array());
   ASSERT_EQ(expected_entries.size(), expected_count);
 
-  // 2. Open and decrypt the frozen fixture vault
+  // 3. Verify decrypted raw payload matches golden plaintext byte-for-byte
+  std::ifstream pwl_file(pwl_path, std::ios::binary | std::ios::ate);
+  ASSERT_TRUE(pwl_file.is_open());
+  std::size_t pwl_size = static_cast<std::size_t>(pwl_file.tellg());
+  pwl_file.seekg(0);
+  std::vector<std::uint8_t> pwl_bytes(pwl_size);
+  pwl_file.read(reinterpret_cast<char*>(pwl_bytes.data()), static_cast<std::streamsize>(pwl_size));
+
+  std::ifstream payload_file(payload_path, std::ios::binary | std::ios::ate);
+  ASSERT_TRUE(payload_file.is_open());
+  std::size_t payload_size = static_cast<std::size_t>(payload_file.tellg());
+  payload_file.seekg(0);
+  std::vector<std::uint8_t> expected_payload_bytes(payload_size);
+  payload_file.read(reinterpret_cast<char*>(expected_payload_bytes.data()), static_cast<std::streamsize>(payload_size));
+
+  std::vector<std::uint8_t> decrypted_bytes = VaultCrypto::decrypt_vault(master_password, pwl_bytes);
+  EXPECT_EQ(decrypted_bytes.size(), expected_payload_bytes.size());
+  EXPECT_EQ(decrypted_bytes, expected_payload_bytes);
+
+  // 4. Open and decrypt the frozen fixture vault through VaultIO
   PrimaryTable loaded = VaultIO::load_vault(pwl_path, master_password);
   ASSERT_EQ(loaded.size(), expected_count);
 
-  // 3. Verify all entries match expected values
+  // 5. Verify all entries match expected values
   for (const auto& item : expected_entries) {
     std::string uuid_str = item.value("uuid", "");
     auto opt_uuid = Uuid::from_string(uuid_str);
@@ -288,23 +331,65 @@ TEST_F(VaultTest, TestVaultCompatibility) {
     }
   }
 
-  // 4. Verification that corrupted fixture FAILS to load (tamper test)
-  std::filesystem::path corrupt_temp = std::filesystem::temp_directory_path() / "corrupt_fixture_temp.pwl";
-  std::filesystem::copy_file(pwl_path, corrupt_temp, std::filesystem::copy_options::overwrite_existing);
+  // 6. Wrong password test
+  EXPECT_THROW(VaultIO::load_vault(pwl_path, "incorrect_master_password"), std::runtime_error);
 
-  // Flip byte at offset 40 (inside encrypted ciphertext payload)
-  {
-    std::fstream f(corrupt_temp, std::ios::in | std::ios::out | std::ios::binary);
-    ASSERT_TRUE(f.is_open());
-    f.seekp(40);
-    char b = 0;
-    f.get(b);
-    f.seekp(40);
-    b = static_cast<char>(b ^ 0x55);
-    f.put(b);
-    f.flush();
+  // 7. Parameterized single-byte flip tamper tests across wire layout regions:
+  // Salt: 0..15 (0, 7, 15)
+  // Nonce: 16..39 (16, 28, 39)
+  // Ciphertext: 40..pwl_size - 17 (40, pwl_size / 2, pwl_size - 17)
+  // Poly1305 MAC tag: pwl_size - 16..pwl_size - 1 (pwl_size - 16, pwl_size - 8, pwl_size - 1)
+  std::vector<std::size_t> test_offsets = {
+      0, 7, 15,
+      16, 28, 39,
+      40, pwl_size / 2, pwl_size - 17,
+      pwl_size - 16, pwl_size - 8, pwl_size - 1
+  };
+
+  std::filesystem::path temp_pwl = std::filesystem::temp_directory_path() / "pwl_tamper_test.pwl";
+
+  for (std::size_t offset : test_offsets) {
+    std::vector<std::uint8_t> corrupted = pwl_bytes;
+    ASSERT_LT(offset, corrupted.size());
+    corrupted[offset] ^= 0x55;
+
+    {
+      std::ofstream out(temp_pwl, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(out.is_open());
+      out.write(reinterpret_cast<const char*>(corrupted.data()), static_cast<std::streamsize>(corrupted.size()));
+    }
+
+    EXPECT_THROW(VaultIO::load_vault(temp_pwl, master_password), std::runtime_error)
+        << "Failed to reject corrupted byte at offset: " << offset;
   }
 
-  EXPECT_THROW(VaultIO::load_vault(corrupt_temp, master_password), std::runtime_error);
-  std::filesystem::remove(corrupt_temp);
+  // 8. Truncation tests across boundaries:
+  // 0: empty file
+  // 15: partial salt
+  // 16: salt only (0 nonce)
+  // 39: partial nonce
+  // 40: header only (0 ciphertext & 0 tag)
+  // 55: header + partial tag (< 56 bytes)
+  // 1000: header + truncated ciphertext
+  // pwl_size - 1: truncated tag by 1 byte
+  std::vector<std::size_t> truncate_lengths = {
+      0, 15, 16, 39, 40, 55, 1000, pwl_size - 1
+  };
+
+  for (std::size_t len : truncate_lengths) {
+    if (len >= pwl_size) continue;
+    {
+      std::ofstream out(temp_pwl, std::ios::binary | std::ios::trunc);
+      ASSERT_TRUE(out.is_open());
+      if (len > 0) {
+        out.write(reinterpret_cast<const char*>(pwl_bytes.data()), static_cast<std::streamsize>(len));
+      }
+    }
+
+    EXPECT_THROW(VaultIO::load_vault(temp_pwl, master_password), std::runtime_error)
+        << "Failed to reject truncated vault of length: " << len;
+  }
+
+  std::error_code ec;
+  std::filesystem::remove(temp_pwl, ec);
 }

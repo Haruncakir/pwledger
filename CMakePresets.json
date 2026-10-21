@@ -121,7 +121,8 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "PWLEDGER_ENABLE_SECURITY_HARDENING": "ON",
         "PWLEDGER_ENABLE_SANITIZERS": "ON",
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebugDLL"
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebugDLL",
+        "CMAKE_CXX_FLAGS_DEBUG": "/Zi /Od /fsanitize=address"
       }
     },
     {
@@ -237,6 +238,9 @@
       "name": "msvc-debug",
       "configurePreset": "msvc-debug",
       "configuration": "Debug",
+      "environment": {
+        "PATH": "$penv{SODIUM_ROOT_DIR}/x64/Release/v143/dynamic;$penv{SODIUM_ROOT_DIR}/x64/Debug/v143/dynamic;$penv{PATH}"
+      },
       "output": {
         "outputOnFailure": true
       }
@@ -245,6 +249,9 @@
       "name": "msvc-relwithdebinfo",
       "configurePreset": "msvc-relwithdebinfo",
       "configuration": "RelWithDebInfo",
+      "environment": {
+        "PATH": "$penv{SODIUM_ROOT_DIR}/x64/Release/v143/dynamic;$penv{SODIUM_ROOT_DIR}/x64/Debug/v143/dynamic;$penv{PATH}"
+      },
       "output": {
         "outputOnFailure": true
       }
@@ -253,6 +260,9 @@
       "name": "msvc-release",
       "configurePreset": "msvc-release",
       "configuration": "Release",
+      "environment": {
+        "PATH": "$penv{SODIUM_ROOT_DIR}/x64/Release/v143/dynamic;$penv{SODIUM_ROOT_DIR}/x64/Debug/v143/dynamic;$penv{PATH}"
+      },
       "output": {
         "outputOnFailure": true
       }
@@ -261,6 +271,9 @@
       "name": "msvc-asan",
       "configurePreset": "msvc-asan",
       "configuration": "Debug",
+      "environment": {
+        "PATH": "$penv{SODIUM_ROOT_DIR}/x64/Release/v143/dynamic;$penv{SODIUM_ROOT_DIR}/x64/Debug/v143/dynamic;$penv{PATH}"
+      },
       "output": {
         "outputOnFailure": true
       }
