@@ -71,6 +71,7 @@ std::size_t read_secret_from_stdin(Secret& out, std::size_t max_bytes) {
     }
     buf[written] = '\0';
   });
+  out.set_length(written);
 
   std::cout << '\n';  // advance past the suppressed newline the user typed
   return written;
@@ -127,8 +128,7 @@ std::size_t prompt_secret(std::string_view prompt, Secret& out, std::size_t max_
 void save_vault_safe(const AppState& state) {
   try {
     state.master_password.with_read_access([&](std::span<const char> buf) {
-      std::size_t len = ::strnlen(buf.data(), buf.size());
-      VaultIO::save_vault(state.vault_path, state.table, std::string_view(buf.data(), len));
+      VaultIO::save_vault(state.vault_path, state.table, std::string_view(buf.data(), buf.size()));
     });
   } catch (const std::exception& e) {
     std::cerr << "Warning: Failed to save vault: " << e.what() << '\n';

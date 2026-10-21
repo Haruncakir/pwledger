@@ -157,7 +157,7 @@ void cmd_copy(AppState& state) {
     save_vault_safe(state);
   }
   entry->plaintext_secret.with_read_access([&](std::span<const char> buf) {
-    clipboard_write(std::string_view(buf.data(), ::strnlen(buf.data(), buf.size())));
+    clipboard_write(std::string_view(buf.data(), buf.size()));
   });
 
   const int timeout = state.config.security.clear_clipboard_seconds;

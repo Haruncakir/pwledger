@@ -41,9 +41,8 @@ std::vector<std::uint8_t> VaultSerializer::serialize(const PrimaryTable& table) 
 
     // Secret data reading requires access guard
     entry.plaintext_secret.with_read_access([&](std::span<const char> buf) {
-      std::size_t len = ::strnlen(buf.data(), buf.size());
-      write_u32(out, static_cast<std::uint32_t>(len));
-      write_bytes(out, reinterpret_cast<const std::uint8_t*>(buf.data()), len);
+      write_u32(out, static_cast<std::uint32_t>(buf.size()));
+      write_bytes(out, reinterpret_cast<const std::uint8_t*>(buf.data()), buf.size());
     });
 
     entry.salt.with_read_access([&](std::span<const char> buf) {
@@ -125,16 +124,18 @@ PrimaryTable VaultSerializer::deserialize(const std::uint8_t* data, std::size_t 
 
     SecretEntry entry(std::move(pk), std::move(uoe), alloc_secret, alloc_salt);
 
-    // Copy bytes into the hardened buffer
+    // Copy bytes into the hardened buffer and set exact payload lengths
     entry.plaintext_secret.with_write_access([&](std::span<char> buf) {
       std::memset(buf.data(), 0, buf.size());
       std::memcpy(buf.data(), secret_data, secret_len);
     });
+    entry.plaintext_secret.set_length(secret_len);
 
     entry.salt.with_write_access([&](std::span<char> buf) {
       std::memset(buf.data(), 0, buf.size());
       std::memcpy(buf.data(), salt_data, salt_len);
     });
+    entry.salt.set_length(salt_len);
 
     entry.metadata.created_at = read_time(data, pos, size);
     entry.metadata.last_modified_at = read_time(data, pos, size);

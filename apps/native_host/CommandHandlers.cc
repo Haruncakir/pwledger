@@ -200,8 +200,7 @@ namespace pwledger {
   }
 
   it->second.plaintext_secret.with_read_access([](std::span<const char> buf) {
-    const std::size_t len = ::strnlen(buf.data(), buf.size());
-    clipboard_write(std::string_view(buf.data(), len));
+    clipboard_write(std::string_view(buf.data(), buf.size()));
   });
 
   it->second.metadata.last_used_at = std::chrono::system_clock::now();
@@ -242,8 +241,7 @@ namespace pwledger {
   // Extract password into a temporary std::string for JSON serialization.
   std::string password;
   it->second.plaintext_secret.with_read_access([&](std::span<const char> buf) {
-    const std::size_t len = ::strnlen(buf.data(), buf.size());
-    password.assign(buf.data(), len);
+    password.assign(buf.data(), buf.size());
   });
 
   json r = make_ok(id);

@@ -50,8 +50,7 @@ std::string format_timepoint(std::chrono::system_clock::time_point tp) {
 // non-empty without exposing the content.
 void print_entry(const Uuid& uuid, const SecretEntry& entry) {
   std::size_t secret_len = 0;
-  entry.plaintext_secret.with_read_access(
-      [&](std::span<const char> buf) { secret_len = ::strnlen(buf.data(), buf.size()); });
+  entry.plaintext_secret.with_read_access([&](std::span<const char> buf) { secret_len = buf.size(); });
 
   std::cout << "UUID            : " << uuid << '\n'
             << "Primary key     : " << entry.primary_key << '\n'

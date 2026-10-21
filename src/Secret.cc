@@ -19,20 +19,33 @@
 #include <pwledger/Secret.h>
 
 #include <cstdlib>
+#include <stdexcept>
 
 namespace pwledger {
 
-Secret::Secret(std::size_t size) {
-  allocate(size);
+Secret::Secret(std::size_t capacity) : Secret(capacity, capacity) {}
+
+Secret::Secret(std::size_t capacity, std::size_t payload_length) {
+  allocate(capacity);
+  payload_length_ = (payload_length <= capacity_) ? payload_length : capacity_;
+}
+
+void Secret::set_length(std::size_t new_length) {
+  if (new_length > capacity_) {
+    throw std::length_error("Secret payload length exceeds allocated capacity");
+  }
+  payload_length_ = new_length;
 }
 
 Secret::~Secret() noexcept {
   wipe_and_free();
 }
 
-Secret::Secret(Secret&& other) noexcept : data_(other.data_), size_(other.size_) {
+Secret::Secret(Secret&& other) noexcept
+    : data_(other.data_), capacity_(other.capacity_), payload_length_(other.payload_length_) {
   other.data_ = nullptr;
-  other.size_ = 0;
+  other.capacity_ = 0;
+  other.payload_length_ = 0;
 #ifndef NDEBUG
   // The source's access_count should be 0; if it isn't, a guard is alive
   // concurrently with a move, which is a misuse.
@@ -56,9 +69,11 @@ Secret& Secret::operator=(Secret&& other) noexcept {
       sodium_free(data_);
     }
     data_ = other.data_;
-    size_ = other.size_;
+    capacity_ = other.capacity_;
+    payload_length_ = other.payload_length_;
     other.data_ = nullptr;
-    other.size_ = 0;
+    other.capacity_ = 0;
+    other.payload_length_ = 0;
 #ifndef NDEBUG
     access_count_.store(0, std::memory_order_relaxed);
 #endif
@@ -72,7 +87,7 @@ void Secret::zeroize() noexcept {
     if (sodium_mprotect_readwrite(data_) != 0) {
       std::abort();
     }
-    sodium_memzero(data_, size_);
+    sodium_memzero(data_, capacity_);
     if (sodium_mprotect_noaccess(data_) != 0) {
       std::abort();
     }
@@ -85,7 +100,7 @@ void Secret::allocate(std::size_t size) {
   if (!data_) {
     std::abort();
   }  // see FAILURE MODEL in file header
-  size_ = size;
+  capacity_ = size;
   // Buffer starts life locked. Every access must go through a guard.
   if (sodium_mprotect_noaccess(data_) != 0) {
     std::abort();
@@ -99,7 +114,8 @@ void Secret::wipe_and_free() noexcept {
     // + memzero before sodium_free would be redundant.
     sodium_free(data_);
     data_ = nullptr;
-    size_ = 0;
+    capacity_ = 0;
+    payload_length_ = 0;
   }
 }
 

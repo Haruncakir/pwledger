@@ -102,7 +102,7 @@ bool entry_update_secret(PrimaryTable& table, const Uuid& uuid) {
 
   prompt_secret("New secret for '" + entry.primary_key + "'",
                 entry.plaintext_secret,
-                entry.plaintext_secret.size(),
+                entry.plaintext_secret.capacity(),
                 /*confirm=*/true);
 
   entry.metadata.last_modified_at = std::chrono::system_clock::now();

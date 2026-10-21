@@ -225,6 +225,39 @@ TEST_F(SecretTest, zeroize_clears_all_bytes) {
   });
 }
 
+TEST_F(SecretTest, EmbeddedNullBytesPreserved) {
+  std::string binary_data = std::string("pass\0word\0end\0", 14);
+  pwledger::Secret s(64, binary_data.size());
+  s.with_write_access([&](std::span<char> buf) {
+    std::memcpy(buf.data(), binary_data.data(), binary_data.size());
+  });
+
+  EXPECT_EQ(s.size(), 14U);
+  EXPECT_EQ(s.capacity(), 64U);
+  s.with_read_access([&](std::span<const char> buf) {
+    EXPECT_EQ(buf.size(), 14U);
+    EXPECT_EQ(std::string_view(buf.data(), buf.size()), std::string_view(binary_data.data(), 14));
+  });
+}
+
+TEST_F(SecretTest, EmptySecretPayload) {
+  pwledger::Secret s(16, 0);
+  EXPECT_EQ(s.size(), 0U);
+  EXPECT_TRUE(s.empty());
+  EXPECT_EQ(s.capacity(), 16U);
+  s.with_read_access([](std::span<const char> buf) {
+    EXPECT_EQ(buf.size(), 0U);
+  });
+}
+
+TEST_F(SecretTest, SetLengthValidation) {
+  pwledger::Secret s(32, 10);
+  EXPECT_EQ(s.size(), 10U);
+  s.set_length(25);
+  EXPECT_EQ(s.size(), 25U);
+  EXPECT_THROW(s.set_length(33), std::length_error);
+}
+
 // ============================================================================
 // Invariant 6: Death test — zero-size allocation
 // ============================================================================

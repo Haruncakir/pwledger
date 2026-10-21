@@ -181,10 +181,13 @@ public:
   // std::optional<Secret> at the call site instead of adding a default ctor.
   Secret() = delete;
 
-  // Allocates `size` bytes of sodium-hardened memory and immediately places
-  // the buffer in NOACCESS state. Aborts on allocation failure (see FAILURE
-  // MODEL in file header).
-  explicit Secret(std::size_t size);
+  // Allocates `capacity` bytes of sodium-hardened memory and defaults
+  // payload length to `capacity`.
+  explicit Secret(std::size_t capacity);
+
+  // Allocates `capacity` bytes of sodium-hardened memory with an explicit
+  // payload length (clamped to capacity).
+  Secret(std::size_t capacity, std::size_t payload_length);
 
   // -- Destruction ------------------------------------------------------------
   // sodium_free internally calls sodium_memzero before releasing the page,
@@ -210,10 +213,20 @@ public:
   Secret(const Secret&) = delete;
   Secret& operator=(const Secret&) = delete;
 
-  // -- Capacity ---------------------------------------------------------------
-  // Returns the size (in bytes) of the allocated buffer. Does not require an
-  // access guard; size is not sensitive information.
-  [[nodiscard]] std::size_t size() const noexcept { return size_; }
+  // -- Size & Capacity -------------------------------------------------------
+  // Returns the valid payload length (in bytes).
+  [[nodiscard]] std::size_t size() const noexcept { return payload_length_; }
+  [[nodiscard]] std::size_t length() const noexcept { return payload_length_; }
+  [[nodiscard]] std::size_t payload_length() const noexcept { return payload_length_; }
+
+  // Returns the allocated memory capacity (in bytes).
+  [[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
+
+  [[nodiscard]] bool empty() const noexcept { return payload_length_ == 0; }
+
+  // Updates the valid payload length up to capacity. Throws std::length_error
+  // if new_length > capacity().
+  void set_length(std::size_t new_length);
 
   // -- Zeroing ----------------------------------------------------------------
   // Overwrites all bytes in the buffer with zeros without freeing or resizing.
@@ -250,7 +263,8 @@ public:
 
 private:
   char* data_ = nullptr;  // TODO: std::byte* or std::span<std::byte>
-  std::size_t size_ = 0;
+  std::size_t capacity_ = 0;
+  std::size_t payload_length_ = 0;
 
 #ifndef NDEBUG
   // Tracks the number of currently live access guards for this Secret.
@@ -296,7 +310,7 @@ public:
 
   ~Secret_readaccess() noexcept;
 
-  [[nodiscard]] std::span<const char> get() const noexcept { return {sec_.data_, sec_.size_}; }
+  [[nodiscard]] std::span<const char> get() const noexcept { return {sec_.data_, sec_.payload_length_}; }
 
   Secret_readaccess(const Secret_readaccess&) = delete;
   Secret_readaccess& operator=(const Secret_readaccess&) = delete;
@@ -324,7 +338,7 @@ public:
 
   ~Secret_writeaccess() noexcept;
 
-  [[nodiscard]] std::span<char> get() noexcept { return {sec_.data_, sec_.size_}; }
+  [[nodiscard]] std::span<char> get() noexcept { return {sec_.data_, sec_.capacity_}; }
 
   Secret_writeaccess(const Secret_writeaccess&) = delete;
   Secret_writeaccess& operator=(const Secret_writeaccess&) = delete;

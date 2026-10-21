@@ -76,8 +76,7 @@ int main() {
       pwledger::prompt_secret("Master password", pwd, 256);
       try {
         pwd.with_read_access([&](std::span<const char> buf) {
-          std::size_t len = ::strnlen(buf.data(), buf.size());
-          pwledger::PrimaryTable t = pwledger::VaultIO::load_vault(state.vault_path, std::string_view(buf.data(), len));
+          pwledger::PrimaryTable t = pwledger::VaultIO::load_vault(state.vault_path, std::string_view(buf.data(), buf.size()));
           state.table = std::move(t);
         });
         state.master_password = std::move(pwd);
