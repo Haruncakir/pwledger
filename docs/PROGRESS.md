@@ -71,21 +71,24 @@
    - *Original*: Conflict between `O_TRUNC` and `O_CREAT | O_EXCL` in ADR-006 and TASK-10.
    - *Correction*: POSIX creates unique temporary file (`.<file>.tmp.XXXXXX`) in same directory via `open(O_WRONLY | O_CREAT | O_EXCL, 0600)`, flushes via `fsync(fd)`, closes, renames over target, and calls `fsync` on parent directory descriptor. On any failure, temporary file is immediately unlinked. Windows uses `MoveFileExW(MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)` and deletes temp file on failure.
 5. **Amendment 6 (TASK-06 Bounds Derivation & Memory Scaling)**:
-   - *Original*: Speculative `kMaxEntries = 100,000`.
-   - *Correction*: Verified against libsodium documentation: each `sodium_malloc()` consumes 3 pages (12 KB virtual address space) enclosed by guard pages. On default Linux systems, `vm.max_map_count` is 65,530; 100,000 allocations would fail with `ENOMEM` around entry #21,800 and trigger `std::abort()`. Bounded `kMaxEntries = 10,000` (consuming 30,000 VMAs, safely under 65,530), `kMaxSecretLen = 65,536` (64 KB for long keys/notes), and `kMaxStringLen = 4,096`. Documented in ADR-001.
+   - *Original*: Speculative `kMaxEntries = 100,000`, `kMaxStringLen = 4,096`.
+   - *Correction*: Verified that `EntrySecurityPolicy::note` and secrets can legitimately hold large payloads. Bounded generously so no vault readable by the original code is rendered unreadable: `kMaxEntries = 10,000` (graceful limit throwing `VaultCorruptException` on breach or on allocation exhaustion), `kMaxSecretLen = 1,048,576` (1 MiB), `kMaxNoteLen = 1,048,576` (1 MiB), `kMaxTitleLen = 65,536` (64 KB), `kMaxUsernameLen = 65,536` (64 KB). Documented in ADR-001.
+6. **Amendment 7 (Quality Bar Amendments in CONSTRAINTS.md)**:
+   - *Approved*: Drop MSan and Valgrind; redefine Gate 3 (ASan+UBSan+LSan on Linux, ≥85% branch coverage on core/host in Phase 4, extension linting); define per-platform sanitizer matrix (Linux = ASan+UBSan+LSan, macOS = ASan+UBSan, MSVC = ASan, MinGW = Build+CTest only after proving `libasan` is absent in MinGW GCC); define exact binary audit commands (`checksec`, `dumpbin /headers /loadconfig`, `otool -hv` + `nm -u`); CMake feature check for `_FORTIFY_SOURCE=3/2/none`; `SYSTEM` includes with MSVC `/external:I /external:W0`; committed `.clang-tidy` and `cppcheck-suppressions.txt` with per-rule justifications; CMake minimum 3.21.
 
 ---
 
-## 4. Pending CONSTRAINTS.md Proposals (Awaiting User Approval)
+## 4. Approved Quality Bar Decisions (Recorded in CONSTRAINTS.md)
 
-The following 7 amendments to `CONSTRAINTS.md` have been submitted to the user with full technical justification (Amendment 5):
-1. **MSan**: Propose dropping MSan in favor of ASan+UBSan because MSan requires an instrumented `libc++` and `libsodium`.
-2. **Valgrind**: Propose dropping Valgrind because it conflicts with `sodium_malloc` page-table guard pages and is redundant with ASan/LSan.
-3. **Per-Platform Sanitizer Matrix**: Define exact platform support: Linux (ASan+UBSan+LSan), macOS (ASan+UBSan), Windows MSVC (ASan), Windows MinGW (ASan+UBSan).
-4. **Platform Hardening Audit Commands**: Define ELF (`checksec`), PE (`dumpbin /headers`), and Mach-O (`otool`).
-5. **`_FORTIFY_SOURCE=3` Fallback**: CMake check to use `=3` if supported with optimization; fallback to `=2`; omit in unoptimized Debug (`-O0`).
-6. **SYSTEM Include Directories**: Mark libsodium, nlohmann/json, and GoogleTest as `SYSTEM` includes in CMake so `-Wconversion` and `-Wold-style-cast` do not fire on external headers.
-7. **Curated `.clang-tidy` File**: Commit `.clang-tidy` at root with an explicit, justified disabled check list; enforce zero inline `// NOLINT`.
+All 7 CONSTRAINTS proposals were approved by the user and committed to `CONSTRAINTS.md`:
+1. **MSan**: Dropped. Replaced by ASan+UBSan+LSan on Linux.
+2. **Valgrind**: Dropped. Guard pages in `sodium_malloc` cause false positive traps; redundant with ASan/LSan. Gate 3 nightly redefined with ASan+UBSan+LSan, coverage (Phase 4), and extension linting.
+3. **Sanitizer Matrix**: Linux (ASan+UBSan+LSan), macOS (ASan+UBSan), Windows MSVC (ASan with dynamic CRT `/MD`), Windows MinGW GCC (Build+CTest only).
+4. **Binary Hardening Audit**: Linux (`checksec`), Windows (`dumpbin /headers` + `/loadconfig`), macOS (`otool -hv` + `nm -u | grep ___stack_chk`).
+5. **`_FORTIFY_SOURCE`**: Probed by CMake: `=3` with optimization (`-O2/-O3`), fallback to `=2`, never at `-O0`.
+6. **SYSTEM Includes**: External headers marked `SYSTEM` in CMake (`/external:I /external:W0` on MSVC).
+7. **Static Analysis**: `.clang-tidy` and `cppcheck-suppressions.txt` committed with per-rule justifications. Zero inline suppressions.
+8. **CMake 3.21**: Minimum version enforced across CMakeLists and setup scripts.
 
 ---
 

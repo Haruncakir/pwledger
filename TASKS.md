@@ -111,7 +111,7 @@ flowchart TD
 ---
 
 #### TASK-06: Strict Bounds Validation in `VaultSerializer::deserialize` (COR-03, COR-05)
-- **Goal**: Harden `deserialize` against malformed and malicious vault files. Enforce bounds checks derived from `sodium_malloc` VMA memory scaling and `vm.max_map_count` limits: `kMaxEntries = 10,000`, `kMaxSecretLen = 65,536` (64 KB for long keys/notes), `kMaxStringLen = 4,096` (4 KB for URLs/titles). Prevent integer overflow in position offset checks (`pos > size - len`). Throw `VaultCorruptException` instead of calling `Secret::allocate` with invalid sizes that trigger aborts.
+- **Goal**: Harden `deserialize` against malformed and malicious vault files. Enforce bounds checks that guarantee any vault readable by the original code remains readable: `kMaxEntries = 10,000` (graceful limit throwing `VaultCorruptException`), `kMaxSecretLen = 1,048,576` (1 MiB), `kMaxNoteLen = 1,048,576` (1 MiB), `kMaxTitleLen = 65,536` (64 KB), `kMaxUsernameLen = 65,536` (64 KB). Prevent integer overflow in position offset checks (`pos > size - len`). Throw `VaultCorruptException` on bounds violation or allocation failure instead of aborting.
 - **Files Touched**: `src/VaultSerializer.cc`, `include/pwledger/VaultSerializer.h`, `tests/test_serializer.cc`
 - **Acceptance Criteria**:
   - Test case feeding corrupt/fuzzed payloads with huge lengths throws `VaultCorruptException` without crashing or aborting.
