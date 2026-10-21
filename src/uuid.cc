@@ -17,23 +17,19 @@
  */
 
 #include <pwledger/uuid.h>
+#include <sodium.h>
+
+#include <stdexcept>
 
 namespace pwledger {
 
-// Generates a version-4 (random) UUID per RFC 4122.
-// NOT cryptographically secure — see DESIGN NOTES.
+// Generates a version-4 (random) UUID per RFC 4122 using libsodium CSPRNG.
 Uuid Uuid::generate() {
+  if (sodium_init() < 0) {
+    throw std::runtime_error("libsodium initialization failed in Uuid::generate");
+  }
   Uuid id;
-
-  std::random_device rd;
-  std::mt19937_64 gen(rd());
-  std::uniform_int_distribution<std::uint64_t> dist;
-
-  std::uint64_t part1 = dist(gen);
-  std::uint64_t part2 = dist(gen);
-
-  std::memcpy(id.bytes.data(), &part1, 8);
-  std::memcpy(id.bytes.data() + 8, &part2, 8);
+  randombytes_buf(id.bytes.data(), id.bytes.size());
 
   // Set version to 4 (bits 4–7 of byte 6).
   id.bytes[6] = (id.bytes[6] & 0x0F) | 0x40;
@@ -53,7 +49,7 @@ std::string Uuid::to_string() const {
   std::ostringstream oss;
   oss << std::hex << std::setfill('0');
 
-  int byte_index = 0;
+  std::size_t byte_index = 0;
   for (int g = 0; g < kNumGroups; ++g) {
     if (g > 0) {
       oss << '-';

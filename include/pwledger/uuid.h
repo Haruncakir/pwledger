@@ -38,10 +38,8 @@
 //
 // SECURITY
 // --------
-// generate() uses std::random_device + std::mt19937_64, which is NOT
-// cryptographically secure. This is acceptable for table keys but must
-// not be used for nonces or key material. If cryptographic UUIDs are
-// needed, replace the PRNG with randombytes_buf() from libsodium.
+// generate() uses libsodium's randombytes_buf() CSPRNG to produce
+// cryptographically secure UUIDv4 identifiers.
 //
 // ============================================================================
 
@@ -122,13 +120,16 @@ private:
 
 namespace std {
 // Specialize std::hash for pwledger::Uuid so it can be used as an
-// unordered_map key. The hash combines the two 64-bit halves of the UUID.
+// unordered_map key. The hash combines the two 64-bit halves of the UUID safely
+// using std::memcpy to prevent unaligned load undefined behavior.
 template <>
 struct hash<pwledger::Uuid> {
   std::size_t operator()(const pwledger::Uuid& uuid) const noexcept {
-    const std::uint64_t* p = reinterpret_cast<const std::uint64_t*>(uuid.bytes.data());
-
-    return std::hash<std::uint64_t>{}(p[0]) ^ (std::hash<std::uint64_t>{}(p[1]) << 1);
+    std::uint64_t p0 = 0;
+    std::uint64_t p1 = 0;
+    std::memcpy(&p0, uuid.bytes.data(), sizeof(p0));
+    std::memcpy(&p1, uuid.bytes.data() + sizeof(p0), sizeof(p1));
+    return std::hash<std::uint64_t>{}(p0) ^ (std::hash<std::uint64_t>{}(p1) << 1);
   }
 };
 }  // namespace std

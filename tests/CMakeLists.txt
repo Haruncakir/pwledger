@@ -74,12 +74,28 @@ target_link_libraries(test_config
 
 gtest_discover_tests(test_config)
 
+# ---------------------------
+
+# UUID tests
+# ---------------------------
+add_executable(test_uuid
+    test_uuid.cc
+)
+
+target_link_libraries(test_uuid
+    PRIVATE
+        pwledger_core
+        GTest::gtest_main
+)
+
+gtest_discover_tests(test_uuid)
+
 # On MSVC with ASan enabled, copy ASan runtime DLLs to target output directories
 if(MSVC AND PWLEDGER_ENABLE_SANITIZERS)
     get_filename_component(MSVC_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
     file(GLOB ASAN_DLLS "${MSVC_BIN_DIR}/clang_rt.asan_*.dll")
     foreach(DLL IN LISTS ASAN_DLLS)
-        foreach(TARGET_NAME test_secret test_vault test_config)
+        foreach(TARGET_NAME test_secret test_vault test_config test_uuid)
             add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DLL}" "$<TARGET_FILE_DIR:${TARGET_NAME}>"
             )
