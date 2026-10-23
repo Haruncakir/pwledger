@@ -115,7 +115,7 @@ TEST_F(VaultTest, SerializationRoundTrip) {
   original.emplace(u2, std::move(e2));
 
   // Serialize
-  std::vector<std::uint8_t> buffer = VaultSerializer::serialize(original);
+  pwledger::SecureBuffer buffer = VaultSerializer::serialize(original);
   EXPECT_GT(buffer.size(), 13); // Larger than header
 
   // Deserialize
@@ -151,7 +151,7 @@ TEST_F(VaultTest, EncryptDecryptRoundTrip) {
   std::vector<std::uint8_t> ciphertext = VaultCrypto::encrypt_vault(password, plaintext);
   EXPECT_GT(ciphertext.size(), plaintext.size() + VaultCrypto::kHeaderBytes);
 
-  std::vector<std::uint8_t> decrypted = VaultCrypto::decrypt_vault(password, ciphertext);
+  pwledger::SecureBuffer decrypted = VaultCrypto::decrypt_vault(password, ciphertext);
   EXPECT_EQ(plaintext, decrypted);
 }
 
@@ -278,7 +278,7 @@ TEST_F(VaultTest, TestVaultCompatibility) {
   std::vector<std::uint8_t> expected_payload_bytes(payload_size);
   payload_file.read(reinterpret_cast<char*>(expected_payload_bytes.data()), static_cast<std::streamsize>(payload_size));
 
-  std::vector<std::uint8_t> decrypted_bytes = VaultCrypto::decrypt_vault(master_password, pwl_bytes);
+  pwledger::SecureBuffer decrypted_bytes = VaultCrypto::decrypt_vault(master_password, pwl_bytes);
   EXPECT_EQ(decrypted_bytes.size(), expected_payload_bytes.size());
   EXPECT_EQ(decrypted_bytes, expected_payload_bytes);
 
@@ -287,7 +287,7 @@ TEST_F(VaultTest, TestVaultCompatibility) {
   ASSERT_EQ(loaded.size(), expected_count);
 
   // Assert refactored VaultSerializer::serialize reproduces golden plaintext payload byte-for-byte
-  std::vector<std::uint8_t> re_serialized = VaultSerializer::serialize(loaded);
+  pwledger::SecureBuffer re_serialized = VaultSerializer::serialize(loaded);
   EXPECT_EQ(re_serialized.size(), expected_payload_bytes.size());
 
   // The V1 on-disk format stores entries in whatever order the unordered_map iterates.
@@ -420,7 +420,7 @@ TEST_F(VaultTest, BinarySecretWithEmbeddedNullRoundtrip) {
 
   table.emplace(id, std::move(entry));
 
-  std::vector<std::uint8_t> serialized = VaultSerializer::serialize(table);
+  pwledger::SecureBuffer serialized = VaultSerializer::serialize(table);
   PrimaryTable deserialized = VaultSerializer::deserialize(serialized.data(), serialized.size());
 
   ASSERT_EQ(deserialized.size(), 1U);

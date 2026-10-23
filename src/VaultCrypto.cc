@@ -39,7 +39,11 @@ Secret VaultCrypto::derive_master_key(std::string_view password, const std::uint
   return key;
 }
 
-std::vector<std::uint8_t> VaultCrypto::encrypt_vault(std::string_view password, const std::vector<std::uint8_t>& plaintext) {
+std::vector<std::uint8_t> VaultCrypto::encrypt_vault(std::string_view password, const SecureBuffer& plaintext) {
+  return encrypt_vault(password, plaintext.span());
+}
+
+std::vector<std::uint8_t> VaultCrypto::encrypt_vault(std::string_view password, std::span<const std::uint8_t> plaintext) {
   std::uint8_t salt[kSaltBytes];
   randombytes_buf(salt, sizeof(salt));
 
@@ -70,9 +74,18 @@ std::vector<std::uint8_t> VaultCrypto::encrypt_vault(std::string_view password, 
   return out;
 }
 
-std::vector<std::uint8_t> VaultCrypto::decrypt_vault(std::string_view password, const std::vector<std::uint8_t>& ciphertext_blob) {
+SecureBuffer VaultCrypto::decrypt_vault(std::string_view password, const std::vector<std::uint8_t>& ciphertext_blob) {
+  return decrypt_vault(password, std::span<const std::uint8_t>(ciphertext_blob));
+}
+
+SecureBuffer VaultCrypto::decrypt_vault(std::string_view password, std::span<const std::uint8_t> ciphertext_blob) {
   if (ciphertext_blob.size() < kHeaderBytes + kTagBytes) {
     throw std::runtime_error("Ciphertext too short (missing headers or tag)");
+  }
+
+  std::size_t untrusted_payload_size = ciphertext_blob.size() - kHeaderBytes - kTagBytes;
+  if (untrusted_payload_size > kMaxSecureBufferBytes) {
+    throw std::length_error("Decrypted vault size exceeds 64 MiB limit");
   }
 
   const std::uint8_t* salt = ciphertext_blob.data();
@@ -82,7 +95,7 @@ std::vector<std::uint8_t> VaultCrypto::decrypt_vault(std::string_view password, 
 
   Secret key = derive_master_key(password, salt);
 
-  std::vector<std::uint8_t> plaintext(encrypted_len - kTagBytes);
+  SecureBuffer plaintext(untrusted_payload_size);
   unsigned long long plaintext_len = 0;
 
   bool dec_ok = false;

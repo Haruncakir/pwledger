@@ -19,10 +19,12 @@
 #ifndef PWLEDGER_VAULTCRYPTO_H
 #define PWLEDGER_VAULTCRYPTO_H
 
+#include <pwledger/SecureBuffer.h>
 #include <pwledger/Secret.h>
 #include <sodium.h>
 
 #include <cstdint>
+#include <span>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -57,11 +59,14 @@ public:
   // Encrypts plaintext bytes with a master password.
   // Generates a random salt for Argon2id and a random nonce for XChaCha20.
   // Returns [salt][nonce][ciphertext+tag].
-  static std::vector<std::uint8_t> encrypt_vault(std::string_view password, const std::vector<std::uint8_t>& plaintext);
+  static std::vector<std::uint8_t> encrypt_vault(std::string_view password, const SecureBuffer& plaintext);
+  static std::vector<std::uint8_t> encrypt_vault(std::string_view password, std::span<const std::uint8_t> plaintext);
 
-  // Decrypts a vault buffer with a master password.
+  // Decrypts a vault buffer with a master password into a hardened SecureBuffer.
   // Throws std::runtime_error if authentication fails (wrong password or data corruption).
-  static std::vector<std::uint8_t> decrypt_vault(std::string_view password, const std::vector<std::uint8_t>& ciphertext_blob);
+  // Throws std::length_error if untrusted ciphertext size exceeds kMaxSecureBufferBytes.
+  static SecureBuffer decrypt_vault(std::string_view password, const std::vector<std::uint8_t>& ciphertext_blob);
+  static SecureBuffer decrypt_vault(std::string_view password, std::span<const std::uint8_t> ciphertext_blob);
 };
 
 }  // namespace pwledger

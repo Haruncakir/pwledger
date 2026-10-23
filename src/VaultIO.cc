@@ -27,18 +27,13 @@ bool VaultIO::vault_exists(const std::filesystem::path& path) {
 }
 
 void VaultIO::save_vault(const std::filesystem::path& path, const PrimaryTable& table, std::string_view password) {
-  // 1. Serialize to plaintext bytes
-  std::vector<std::uint8_t> plaintext = VaultSerializer::serialize(table);
+  // 1. Serialize to plaintext bytes into SecureBuffer
+  SecureBuffer plaintext = VaultSerializer::serialize(table);
 
   // 2. Encrypt
   std::vector<std::uint8_t> ciphertext = VaultCrypto::encrypt_vault(password, plaintext);
 
-  // 3. Clear plaintext from memory immediately (best effort; std::vector
-  // doesn't guarantee zeroing, but we can do it manually before destruction)
-  sodium_memzero(plaintext.data(), plaintext.size());
-  // Also clear its capacity if it reallocated
-  plaintext.clear();
-  plaintext.shrink_to_fit();
+  // 3. Clear plaintext: SecureBuffer deterministically wipes itself on destruction
 
   // 4. Atomic write
   std::filesystem::path temp_path = path;
@@ -87,20 +82,13 @@ PrimaryTable VaultIO::load_vault(const std::filesystem::path& path, std::string_
     }
   }
 
-  // 2. Decrypt
-  std::vector<std::uint8_t> plaintext = VaultCrypto::decrypt_vault(password, ciphertext);
+  // 2. Decrypt into hardened SecureBuffer
+  SecureBuffer plaintext = VaultCrypto::decrypt_vault(password, ciphertext);
 
   // 3. Deserialize
-  PrimaryTable table;
-  try {
-    table = VaultSerializer::deserialize(plaintext.data(), plaintext.size());
-  } catch (...) {
-    sodium_memzero(plaintext.data(), plaintext.size());
-    throw;
-  }
+  PrimaryTable table = VaultSerializer::deserialize(plaintext.data(), plaintext.size());
 
-  // 4. Clear plaintext
-  sodium_memzero(plaintext.data(), plaintext.size());
+  // 4. Clear plaintext: SecureBuffer deterministically wipes itself on destruction
 
   return table;
 }

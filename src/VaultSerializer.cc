@@ -22,8 +22,8 @@
 
 namespace pwledger {
 
-std::vector<std::uint8_t> VaultSerializer::serialize(const PrimaryTable& table) {
-  std::vector<std::uint8_t> out;
+SecureBuffer VaultSerializer::serialize(const PrimaryTable& table) {
+  SecureBuffer out;
   // Rough preallocation estimate: 128 bytes per entry + header
   out.reserve(13 + table.size() * 128);
 
@@ -160,18 +160,18 @@ PrimaryTable VaultSerializer::deserialize(const std::uint8_t* data, std::size_t 
   return table;
 }
 
-void VaultSerializer::write_u8(std::vector<std::uint8_t>& out, std::uint8_t val) {
+void VaultSerializer::write_u8(SecureBuffer& out, std::uint8_t val) {
   out.push_back(val);
 }
 
-void VaultSerializer::write_u32(std::vector<std::uint8_t>& out, std::uint32_t val) {
+void VaultSerializer::write_u32(SecureBuffer& out, std::uint32_t val) {
   out.push_back(static_cast<std::uint8_t>(val & 0xFF));
   out.push_back(static_cast<std::uint8_t>((val >> 8) & 0xFF));
   out.push_back(static_cast<std::uint8_t>((val >> 16) & 0xFF));
   out.push_back(static_cast<std::uint8_t>((val >> 24) & 0xFF));
 }
 
-void VaultSerializer::write_u64(std::vector<std::uint8_t>& out, std::uint64_t val) {
+void VaultSerializer::write_u64(SecureBuffer& out, std::uint64_t val) {
   out.push_back(static_cast<std::uint8_t>(val & 0xFF));
   out.push_back(static_cast<std::uint8_t>((val >> 8) & 0xFF));
   out.push_back(static_cast<std::uint8_t>((val >> 16) & 0xFF));
@@ -182,17 +182,17 @@ void VaultSerializer::write_u64(std::vector<std::uint8_t>& out, std::uint64_t va
   out.push_back(static_cast<std::uint8_t>((val >> 56) & 0xFF));
 }
 
-void VaultSerializer::write_bytes(std::vector<std::uint8_t>& out, const std::uint8_t* data, std::size_t len) {
-  out.insert(out.end(), data, data + len);
+void VaultSerializer::write_bytes(SecureBuffer& out, const std::uint8_t* data, std::size_t len) {
+  out.append(data, len);
 }
 
-void VaultSerializer::write_string(std::vector<std::uint8_t>& out, const std::string& str) {
+void VaultSerializer::write_string(SecureBuffer& out, const std::string& str) {
   std::uint32_t len = static_cast<std::uint32_t>(str.size());
   write_u32(out, len);
   write_bytes(out, reinterpret_cast<const std::uint8_t*>(str.data()), len);
 }
 
-void VaultSerializer::write_time(std::vector<std::uint8_t>& out, std::chrono::system_clock::time_point tp) {
+void VaultSerializer::write_time(SecureBuffer& out, std::chrono::system_clock::time_point tp) {
   auto sec = std::chrono::duration_cast<std::chrono::seconds>(tp.time_since_epoch()).count();
   write_u64(out, static_cast<std::uint64_t>(sec));
 }

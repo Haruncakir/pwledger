@@ -35,6 +35,7 @@ add_library(pwledger_core STATIC
     ProcessHardening.cc
     Secret.cc
     SecretEntry.cc
+    SecureBuffer.cc
     TerminalManager.cc
     uuid.cc
     VaultCrypto.cc
