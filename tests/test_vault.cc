@@ -144,6 +144,31 @@ TEST_F(VaultTest, SerializationRoundTrip) {
   });
 }
 
+TEST_F(VaultTest, CorruptMagicThrows) {
+  PrimaryTable table;
+  pwledger::SecureBuffer buf = VaultSerializer::serialize(table);
+  ASSERT_GE(buf.size(), 4U);
+  buf.data()[0] ^= 0x55;
+  EXPECT_THROW(VaultSerializer::deserialize(buf.data(), buf.size()), std::runtime_error);
+}
+
+TEST_F(VaultTest, UnsupportedVersionThrows) {
+  PrimaryTable table;
+  pwledger::SecureBuffer buf = VaultSerializer::serialize(table);
+  ASSERT_GE(buf.size(), 5U);
+  buf.data()[4] = 99;
+  EXPECT_THROW(VaultSerializer::deserialize(buf.data(), buf.size()), std::runtime_error);
+}
+
+TEST_F(VaultTest, EmptyFileThrows) {
+  std::filesystem::path empty_path = std::filesystem::temp_directory_path() / "empty_test_vault.pwl";
+  {
+    std::ofstream ofs(empty_path, std::ios::binary | std::ios::trunc);
+  }
+  EXPECT_THROW(VaultIO::load_vault(empty_path, "password"), std::runtime_error);
+  std::filesystem::remove(empty_path);
+}
+
 TEST_F(VaultTest, EncryptDecryptRoundTrip) {
   std::string password = "strong_master_password";
   std::vector<std::uint8_t> plaintext = {1, 2, 3, 4, 5, 255, 0, 42};

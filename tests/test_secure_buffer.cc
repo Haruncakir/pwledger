@@ -111,7 +111,6 @@ TEST_F(SecureBufferTest, UntrustedSizeLimitEnforced) {
   EXPECT_THROW(pwledger::SecureBuffer(pwledger::kMaxSecureBufferBytes + 1), std::length_error);
 }
 
-#if !defined(NDEBUG)
 using SecureBufferDeathTest = SecureBufferTest;
 
 TEST_F(SecureBufferDeathTest, GuardPageAccessAborts) {
@@ -122,6 +121,5 @@ TEST_F(SecureBufferDeathTest, GuardPageAccessAborts) {
     (void)b;
   }, "");
 }
-#endif
 
 }  // namespace

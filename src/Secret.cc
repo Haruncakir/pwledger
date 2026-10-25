@@ -95,7 +95,9 @@ void Secret::zeroize() noexcept {
 }
 
 void Secret::allocate(std::size_t size) {
-  assert(size > 0 && "Secret size must be greater than 0");
+  if (size == 0) {
+    std::abort();
+  }
   data_ = static_cast<char*>(sodium_malloc(size));
   if (!data_) {
     std::abort();

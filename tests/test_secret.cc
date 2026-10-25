@@ -264,8 +264,6 @@ TEST_F(SecretTest, SetLengthValidation) {
 // Secret(0) triggers an assert in debug builds because sodium_malloc(0) is
 // implementation-defined and a zero-size Secret has no valid use case. This
 // test only runs in debug builds where NDEBUG is not defined.
-#ifndef NDEBUG
-TEST_F(SecretDeathTest, zero_size_aborts_in_debug) {
+TEST_F(SecretDeathTest, zero_size_aborts) {
   ASSERT_DEATH({ pwledger::Secret s(0); }, "");
 }
-#endif

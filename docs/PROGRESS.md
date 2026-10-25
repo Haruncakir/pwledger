@@ -72,9 +72,9 @@
 4. **Amendment 4 (Atomic File Replacement Consistency)**:
    - *Original*: Conflict between `O_TRUNC` and `O_CREAT | O_EXCL` in ADR-006 and TASK-10.
    - *Correction*: POSIX creates unique temporary file (`.<file>.tmp.XXXXXX`) in same directory via `open(O_WRONLY | O_CREAT | O_EXCL, 0600)`, flushes via `fsync(fd)`, closes, renames over target, and calls `fsync` on parent directory descriptor. On any failure, temporary file is immediately unlinked. Windows uses `MoveFileExW(MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)` and deletes temp file on failure.
-5. **Amendment 6 (TASK-06 Bounds Derivation & Memory Scaling)**:
-   - *Original*: Speculative `kMaxEntries = 100,000`, `kMaxStringLen = 4,096`.
-   - *Correction*: Verified that `EntrySecurityPolicy::note` and secrets can legitimately hold large payloads. Bounded generously so no vault readable by the original code is rendered unreadable: `kMaxEntries = 10,000` (graceful limit throwing `VaultCorruptException` on breach or on allocation exhaustion), `kMaxSecretLen = 1,048,576` (1 MiB), `kMaxNoteLen = 1,048,576` (1 MiB), `kMaxTitleLen = 65,536` (64 KB), `kMaxUsernameLen = 65,536` (64 KB). Documented in ADR-001.
+5. **Amendment 6 (TASK-06 Structural Bounds Derivation & Memory Scaling)**:
+   - *Original*: Speculative `kMaxEntries = 10,000` hard cap.
+   - *Correction*: Replaced arbitrary 10,000 cap with mathematical structural limits: wire format v1 minimum entry size = 66 bytes, so `num_entries > (size - pos) / 66` is mathematically impossible and throws `VaultCorruptException`. Upper sanity bound `kMaxStructuralEntries = 1,000,000`. String and secret lengths are strictly bounded by remaining buffer bytes (`len > size - pos`), ensuring zero truncation of legitimate original vaults. Memory exhaustion throws `VaultResourceException` instead of aborting. Documented in ADR-001.
 6. **Amendment 7 (Quality Bar Amendments in CONSTRAINTS.md)**:
    - *Approved*: Drop MSan and Valgrind; redefine Gate 3 (ASan+UBSan+LSan on Linux, ≥85% branch coverage on core/host in Phase 4, extension linting); define per-platform sanitizer matrix (Linux = ASan+UBSan+LSan, macOS = ASan+UBSan, MSVC = ASan, MinGW = Build+CTest only after proving `libasan` is absent in MinGW GCC); define exact binary audit commands (`checksec`, `dumpbin /headers /loadconfig`, `otool -hv` + `nm -u`); CMake feature check for `_FORTIFY_SOURCE=3/2/none`; `SYSTEM` includes with MSVC `/external:I /external:W0`; committed `.clang-tidy` and `cppcheck-suppressions.txt` with per-rule justifications; CMake minimum 3.21.
 
@@ -97,7 +97,8 @@ All 7 CONSTRAINTS proposals were approved by the user and committed to `CONSTRAI
 ## 5. Out-of-Scope Findings & Observations
 
 - *Note*: Unrelated defects or observations discovered during task execution will be cataloged here rather than expanding task scope.
-- `include/pwledger/Uuid.h` vs `include/pwledger/uuid.h`: Case collision on Windows NTFS resolved via `git update-index --assume-unchanged include/pwledger/Uuid.h`. Redundant orphan header will be cleanly pruned in TASK-03.
+- `include/pwledger/Uuid.h` vs `include/pwledger/uuid.h`: Case collision on Windows NTFS resolved via `git update-index --assume-unchanged include/pwledger/Uuid.h`. Redundant orphan header cleanly pruned in TASK-03.
+- `SecretEntry.salt` VMA footprint: `salt` is public cryptographic data (16 bytes, not a secret), but is held in a `Secret` container backed by `sodium_malloc()`, consuming 4 VMAs (`r--p`, `---p`, `rw-p`, `---p`) alongside `plaintext_secret` (8 VMAs total per entry). Storing `salt` as `std::array<uint8_t, 16>` would halve VMA consumption from 8 to 4 per entry (doubling entry capacity on default Linux kernels from ~8,186 to ~16,370). Altering `SecretEntry` members is deferred beyond Stage 2 to preserve struct memory representation until domain refactoring.
 
 ---
 

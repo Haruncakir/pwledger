@@ -69,3 +69,8 @@ pwledger_test_*
 #*#
 .#*
 
+# Scratch & local developer configs
+scratch/
+CMakeUserPresets.json
+
+
