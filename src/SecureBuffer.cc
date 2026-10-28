@@ -61,7 +61,7 @@ SecureBuffer& SecureBuffer::operator=(SecureBuffer&& other) noexcept {
 
 void SecureBuffer::reallocate(std::size_t new_capacity) {
   if (new_capacity > kMaxSecureBufferBytes) {
-    throw std::length_error("SecureBuffer allocation request exceeds maximum allowable limit (64 MiB)");
+    throw VaultResourceException("SecureBuffer allocation request exceeds maximum allowable limit (64 MiB)");
   }
   if (sodium_init() < 0) {
     throw std::runtime_error("libsodium initialization failed in SecureBuffer");
@@ -69,7 +69,7 @@ void SecureBuffer::reallocate(std::size_t new_capacity) {
 
   std::uint8_t* new_data = static_cast<std::uint8_t*>(sodium_malloc(new_capacity));
   if (!new_data) {
-    throw std::bad_alloc();
+    throw VaultResourceException("SecureBuffer memory allocation failed");
   }
 
   if (data_) {

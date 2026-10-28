@@ -23,6 +23,47 @@
 
 namespace pwledger {
 
+namespace {
+Secret::AllocationFailureHook s_allocation_failure_hook = nullptr;
+}
+
+void Secret::set_allocation_failure_hook(AllocationFailureHook hook) noexcept {
+  s_allocation_failure_hook = hook;
+}
+
+Secret::Secret(UntrustedTag, std::size_t capacity, std::size_t payload_length) {
+  try_allocate(capacity);
+  payload_length_ = (payload_length <= capacity_) ? payload_length : capacity_;
+}
+
+Secret Secret::try_create(std::size_t capacity, std::size_t payload_length) {
+  if (capacity == 0) {
+    throw VaultResourceException("Secret allocation capacity cannot be zero");
+  }
+  return Secret(UntrustedTag{}, capacity, payload_length == 0 ? capacity : payload_length);
+}
+
+void Secret::try_allocate(std::size_t size) {
+  if (size == 0) {
+    throw VaultResourceException("Secret allocation size cannot be zero");
+  }
+  if (s_allocation_failure_hook && s_allocation_failure_hook(size)) {
+    throw VaultResourceException("Simulated secure memory allocation refusal");
+  }
+  char* new_data = static_cast<char*>(sodium_malloc(size));
+  if (!new_data) {
+    throw VaultResourceException("sodium_malloc failed to allocate secure memory");
+  }
+  if (data_) {
+    wipe_and_free();
+  }
+  data_ = new_data;
+  capacity_ = size;
+  if (sodium_mprotect_noaccess(data_) != 0) {
+    std::abort();
+  }
+}
+
 Secret::Secret(std::size_t capacity) : Secret(capacity, capacity) {}
 
 Secret::Secret(std::size_t capacity, std::size_t payload_length) {

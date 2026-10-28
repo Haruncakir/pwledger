@@ -78,24 +78,30 @@ PrimaryTable VaultSerializer::deserialize(const std::uint8_t* data, std::size_t 
   std::size_t pos = 0;
 
   auto require = [&](std::size_t bytes) {
-    if (pos + bytes > size) {
-      throw std::runtime_error("Vault payload truncated");
+    if (bytes > size - pos) {
+      throw VaultCorruptException("Vault payload truncated");
     }
   };
 
   require(4);
   if (std::memcmp(data + pos, kMagic, 4) != 0) {
-    throw std::runtime_error("Invalid vault magic number");
+    throw VaultCorruptException("Invalid vault magic number");
   }
   pos += 4;
 
   require(1);
   if (data[pos] != kVersion) {
-    throw std::runtime_error("Unsupported vault version");
+    throw VaultCorruptException("Unsupported vault version");
   }
   pos += 1;
 
   std::uint64_t num_entries = read_u64(data, pos, size);
+  if (num_entries > kMaxStructuralEntries) {
+    throw VaultCorruptException("Vault entry count exceeds maximum structural limit");
+  }
+  if (num_entries > (size - pos) / kMinEntryBytes) {
+    throw VaultCorruptException("Vault entry count exceeds remaining payload capacity");
+  }
 
   for (std::uint64_t i = 0; i < num_entries; ++i) {
     require(16);
@@ -122,7 +128,8 @@ PrimaryTable VaultSerializer::deserialize(const std::uint8_t* data, std::size_t 
     std::size_t alloc_secret = (secret_len > 256) ? secret_len : 256;
     std::size_t alloc_salt = (salt_len > 16) ? salt_len : 16;
 
-    SecretEntry entry(std::move(pk), std::move(uoe), alloc_secret, alloc_salt);
+    // Allocate through try_create so secure memory exhaustion throws VaultResourceException
+    SecretEntry entry = SecretEntry::try_create(std::move(pk), std::move(uoe), alloc_secret, alloc_salt);
 
     // Copy bytes into the hardened buffer and set exact payload lengths
     entry.plaintext_secret.with_write_access([&](std::span<char> buf) {
@@ -154,7 +161,13 @@ PrimaryTable VaultSerializer::deserialize(const std::uint8_t* data, std::size_t 
 
     entry.security_policy.note = read_string(data, pos, size);
 
+    // Duplicate UUID policy: table.emplace() retains the first occurrence and
+    // ignores subsequent duplicates without leaking memory or plaintext secrets.
     table.emplace(uuid, std::move(entry));
+  }
+
+  if (pos != size) {
+    throw VaultCorruptException("Trailing unparsed bytes at end of vault payload");
   }
 
   return table;
@@ -198,7 +211,7 @@ void VaultSerializer::write_time(SecureBuffer& out, std::chrono::system_clock::t
 }
 
 std::uint32_t VaultSerializer::read_u32(const std::uint8_t* data, std::size_t& pos, std::size_t size) {
-  if (pos + 4 > size) throw std::runtime_error("Truncated buffer");
+  if (size - pos < 4) throw VaultCorruptException("Truncated buffer while reading integer");
   std::uint32_t val = static_cast<std::uint32_t>(data[pos]) |
                       (static_cast<std::uint32_t>(data[pos + 1]) << 8) |
                       (static_cast<std::uint32_t>(data[pos + 2]) << 16) |
@@ -208,7 +221,7 @@ std::uint32_t VaultSerializer::read_u32(const std::uint8_t* data, std::size_t& p
 }
 
 std::uint64_t VaultSerializer::read_u64(const std::uint8_t* data, std::size_t& pos, std::size_t size) {
-  if (pos + 8 > size) throw std::runtime_error("Truncated buffer");
+  if (size - pos < 8) throw VaultCorruptException("Truncated buffer while reading integer");
   std::uint64_t val = static_cast<std::uint64_t>(data[pos]) |
                       (static_cast<std::uint64_t>(data[pos + 1]) << 8) |
                       (static_cast<std::uint64_t>(data[pos + 2]) << 16) |
@@ -223,7 +236,7 @@ std::uint64_t VaultSerializer::read_u64(const std::uint8_t* data, std::size_t& p
 
 std::string VaultSerializer::read_string(const std::uint8_t* data, std::size_t& pos, std::size_t size) {
   std::uint32_t len = read_u32(data, pos, size);
-  if (pos + len > size) throw std::runtime_error("Truncated string");
+  if (len > size - pos) throw VaultCorruptException("String length exceeds remaining buffer");
   std::string str(reinterpret_cast<const char*>(data + pos), len);
   pos += len;
   return str;

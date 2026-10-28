@@ -25,12 +25,14 @@
 #include <pwledger/VaultIO.h>
 #include <pwledger/VaultPath.h>
 #include <pwledger/VaultSerializer.h>
+#include <pwledger/VaultExceptions.h>
 #include <pwledger/uuid.h>
 
 #include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <string>
 
 #include <nlohmann/json.hpp>
@@ -149,7 +151,7 @@ TEST_F(VaultTest, CorruptMagicThrows) {
   pwledger::SecureBuffer buf = VaultSerializer::serialize(table);
   ASSERT_GE(buf.size(), 4U);
   buf.data()[0] ^= 0x55;
-  EXPECT_THROW(VaultSerializer::deserialize(buf.data(), buf.size()), std::runtime_error);
+  EXPECT_THROW(VaultSerializer::deserialize(buf.data(), buf.size()), pwledger::VaultCorruptException);
 }
 
 TEST_F(VaultTest, UnsupportedVersionThrows) {
@@ -157,7 +159,7 @@ TEST_F(VaultTest, UnsupportedVersionThrows) {
   pwledger::SecureBuffer buf = VaultSerializer::serialize(table);
   ASSERT_GE(buf.size(), 5U);
   buf.data()[4] = 99;
-  EXPECT_THROW(VaultSerializer::deserialize(buf.data(), buf.size()), std::runtime_error);
+  EXPECT_THROW(VaultSerializer::deserialize(buf.data(), buf.size()), pwledger::VaultCorruptException);
 }
 
 TEST_F(VaultTest, EmptyFileThrows) {
@@ -456,4 +458,336 @@ TEST_F(VaultTest, BinarySecretWithEmbeddedNullRoundtrip) {
     EXPECT_EQ(buf.size(), 17U);
     EXPECT_EQ(std::string_view(buf.data(), buf.size()), std::string_view(secret_payload.data(), 17));
   });
+}
+
+namespace {
+
+std::filesystem::path resolve_fixtures_dir() {
+  std::filesystem::path fixture_dir;
+#ifdef PWLEDGER_TEST_FIXTURES_DIR
+  fixture_dir = PWLEDGER_TEST_FIXTURES_DIR;
+#else
+  fixture_dir = std::filesystem::current_path() / "tests" / "fixtures";
+#endif
+  if (!std::filesystem::exists(fixture_dir / "v1_original_vault.pwl")) {
+    fixture_dir = std::filesystem::current_path() / "fixtures";
+  }
+  return fixture_dir;
+}
+
+std::vector<std::uint8_t> read_fixture_bytes(const std::string& filename) {
+  std::filesystem::path p = resolve_fixtures_dir() / filename;
+  std::ifstream f(p, std::ios::binary | std::ios::ate);
+  if (!f.is_open()) {
+    throw std::runtime_error("Could not open fixture file: " + p.string());
+  }
+  std::size_t size = static_cast<std::size_t>(f.tellg());
+  f.seekg(0);
+  std::vector<std::uint8_t> bytes(size);
+  f.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size));
+  return bytes;
+}
+
+}  // namespace
+
+// (a) Prefix truncation: deserialize every prefix 0..n-1 of v1_original_payload.bin;
+// asserts VaultCorruptException, never crashes/aborts/hangs.
+TEST_F(VaultTest, DeserializerPrefixTruncationThrows) {
+  std::vector<std::uint8_t> golden = read_fixture_bytes("v1_original_payload.bin");
+  ASSERT_GT(golden.size(), 0U);
+
+  for (std::size_t len = 0; len < golden.size(); ++len) {
+    EXPECT_THROW({
+      (void)VaultSerializer::deserialize(golden.data(), len);
+    }, pwledger::VaultCorruptException) << "Failed to throw VaultCorruptException for prefix length: " << len;
+  }
+}
+
+// (b) Field length boundary tests: 0xFFFFFFFF, remaining + 1, exactly remaining.
+TEST_F(VaultTest, FieldLengthBoundaryTests) {
+  PrimaryTable table;
+  Uuid id = Uuid::generate();
+  SecretEntry entry("service.test", "user1", 32, 16);
+  entry.plaintext_secret.with_write_access([](std::span<char> buf) {
+    std::memcpy(buf.data(), "secret12345", 11);
+  });
+  entry.plaintext_secret.set_length(11);
+  table.emplace(id, std::move(entry));
+
+  SecureBuffer valid_buf = VaultSerializer::serialize(table);
+  std::vector<std::uint8_t> base_bytes(valid_buf.data(), valid_buf.data() + valid_buf.size());
+
+  // Offset 29 is the 4-byte pk_len (4 magic + 1 version + 8 num_entries + 16 uuid = 29)
+  const std::size_t pk_len_offset = 29;
+  ASSERT_LT(pk_len_offset + 4, base_bytes.size());
+
+  // Subcase 1: len = 0xFFFFFFFF
+  {
+    std::vector<std::uint8_t> mutated = base_bytes;
+    mutated[pk_len_offset] = 0xFF;
+    mutated[pk_len_offset + 1] = 0xFF;
+    mutated[pk_len_offset + 2] = 0xFF;
+    mutated[pk_len_offset + 3] = 0xFF;
+    EXPECT_THROW((void)VaultSerializer::deserialize(mutated.data(), mutated.size()), pwledger::VaultCorruptException);
+  }
+
+  // Subcase 2: len = remaining + 1
+  {
+    std::vector<std::uint8_t> mutated = base_bytes;
+    std::uint32_t remaining = static_cast<std::uint32_t>(mutated.size() - (pk_len_offset + 4));
+    std::uint32_t bad_len = remaining + 1;
+    mutated[pk_len_offset] = static_cast<std::uint8_t>(bad_len & 0xFF);
+    mutated[pk_len_offset + 1] = static_cast<std::uint8_t>((bad_len >> 8) & 0xFF);
+    mutated[pk_len_offset + 2] = static_cast<std::uint8_t>((bad_len >> 16) & 0xFF);
+    mutated[pk_len_offset + 3] = static_cast<std::uint8_t>((bad_len >> 24) & 0xFF);
+    EXPECT_THROW((void)VaultSerializer::deserialize(mutated.data(), mutated.size()), pwledger::VaultCorruptException);
+  }
+
+  // Subcase 3: len = exactly remaining (consumes all remaining buffer, starving subsequent required fields)
+  {
+    std::vector<std::uint8_t> mutated = base_bytes;
+    std::uint32_t remaining = static_cast<std::uint32_t>(mutated.size() - (pk_len_offset + 4));
+    mutated[pk_len_offset] = static_cast<std::uint8_t>(remaining & 0xFF);
+    mutated[pk_len_offset + 1] = static_cast<std::uint8_t>((remaining >> 8) & 0xFF);
+    mutated[pk_len_offset + 2] = static_cast<std::uint8_t>((remaining >> 16) & 0xFF);
+    mutated[pk_len_offset + 3] = static_cast<std::uint8_t>((remaining >> 24) & 0xFF);
+    EXPECT_THROW((void)VaultSerializer::deserialize(mutated.data(), mutated.size()), pwledger::VaultCorruptException);
+  }
+}
+
+// (c) Lying entry count: too high, too low, zero.
+TEST_F(VaultTest, LyingEntryCountTests) {
+  PrimaryTable table;
+  Uuid id1 = Uuid::generate();
+  Uuid id2 = Uuid::generate();
+  table.emplace(id1, SecretEntry("srv1", "u1", 16, 16));
+  table.emplace(id2, SecretEntry("srv2", "u2", 16, 16));
+
+  SecureBuffer buf = VaultSerializer::serialize(table);
+  std::vector<std::uint8_t> bytes(buf.data(), buf.data() + buf.size());
+
+  // Entry count is uint64 at offset 5
+  const std::size_t count_offset = 5;
+
+  // Lying too high: count = 100, but buffer cannot hold 100 entries
+  {
+    std::vector<std::uint8_t> mutated = bytes;
+    mutated[count_offset] = 100;
+    EXPECT_THROW((void)VaultSerializer::deserialize(mutated.data(), mutated.size()), pwledger::VaultCorruptException);
+  }
+
+  // Lying too low: count = 1, but buffer contains 2 entries (causes trailing bytes error)
+  {
+    std::vector<std::uint8_t> mutated = bytes;
+    mutated[count_offset] = 1;
+    EXPECT_THROW((void)VaultSerializer::deserialize(mutated.data(), mutated.size()), pwledger::VaultCorruptException);
+  }
+
+  // Zero entries with non-empty payload: count = 0, but payload has entry bytes
+  {
+    std::vector<std::uint8_t> mutated = bytes;
+    mutated[count_offset] = 0;
+    EXPECT_THROW((void)VaultSerializer::deserialize(mutated.data(), mutated.size()), pwledger::VaultCorruptException);
+  }
+
+  // Legitimate empty table (13 bytes total)
+  {
+    PrimaryTable empty_table;
+    SecureBuffer empty_buf = VaultSerializer::serialize(empty_table);
+    EXPECT_EQ(empty_buf.size(), 13U);
+    PrimaryTable loaded_empty = VaultSerializer::deserialize(empty_buf.data(), empty_buf.size());
+    EXPECT_EQ(loaded_empty.size(), 0U);
+  }
+}
+
+// (d) Huge entry count: exceeds kMaxStructuralEntries
+TEST_F(VaultTest, HugeEntryCountThrows) {
+  std::vector<std::uint8_t> header(13);
+  header[0] = 'P'; header[1] = 'W'; header[2] = 'L'; header[3] = '\0';
+  header[4] = 1; // version
+
+  // Set num_entries = kMaxStructuralEntries + 1 (1'000'001)
+  std::uint64_t huge_count = pwledger::VaultSerializer::kMaxStructuralEntries + 1;
+  for (std::size_t i = 0; i < 8; ++i) {
+    header[5 + i] = static_cast<std::uint8_t>((huge_count >> (i * 8)) & 0xFF);
+  }
+
+  EXPECT_THROW((void)VaultSerializer::deserialize(header.data(), header.size()), pwledger::VaultCorruptException);
+
+  // Set num_entries = 0xFFFFFFFFFFFFFFFF
+  for (std::size_t i = 0; i < 8; ++i) {
+    header[5 + i] = 0xFF;
+  }
+  EXPECT_THROW((void)VaultSerializer::deserialize(header.data(), header.size()), pwledger::VaultCorruptException);
+}
+
+// (e) Trailing garbage after last entry
+TEST_F(VaultTest, TrailingGarbageThrows) {
+  std::vector<std::uint8_t> golden = read_fixture_bytes("v1_original_payload.bin");
+  ASSERT_GT(golden.size(), 0U);
+
+  // Append 1 byte
+  std::vector<std::uint8_t> mutated1 = golden;
+  mutated1.push_back(0xAA);
+  EXPECT_THROW((void)VaultSerializer::deserialize(mutated1.data(), mutated1.size()), pwledger::VaultCorruptException);
+
+  // Append 10 bytes
+  std::vector<std::uint8_t> mutated10 = golden;
+  mutated10.insert(mutated10.end(), 10, 0x55);
+  EXPECT_THROW((void)VaultSerializer::deserialize(mutated10.data(), mutated10.size()), pwledger::VaultCorruptException);
+}
+
+// (f) Duplicate UUIDs: retains first occurrence, ignores duplicates, no leak or crash
+TEST_F(VaultTest, DuplicateUuidsRetainsFirstAndDoesNotLeak) {
+  PrimaryTable table;
+  Uuid id1 = Uuid::generate();
+  Uuid id2 = Uuid::generate();
+
+  table.emplace(id1, SecretEntry("service.first", "user1", 16, 16));
+  table.emplace(id2, SecretEntry("service.second", "user2", 16, 16));
+
+  SecureBuffer buf = VaultSerializer::serialize(table);
+  std::vector<std::uint8_t> bytes(buf.data(), buf.data() + buf.size());
+
+  // Find where id2 is in bytes and overwrite it with id1.
+  auto it = std::search(bytes.begin() + 13, bytes.end(), id2.bytes.begin(), id2.bytes.end());
+  ASSERT_NE(it, bytes.end());
+  std::copy(id1.bytes.begin(), id1.bytes.end(), it);
+
+  // Deserializing must not throw, must produce a table of size 1 (first entry retained)
+  PrimaryTable deserialized = VaultSerializer::deserialize(bytes.data(), bytes.size());
+  EXPECT_EQ(deserialized.size(), 1U);
+  auto found = deserialized.find(id1);
+  ASSERT_NE(found, deserialized.end());
+  EXPECT_TRUE(found->second.primary_key == "service.first" || found->second.primary_key == "service.second");
+}
+
+// (g) Simulated allocation refusal test hook
+TEST_F(VaultTest, SimulatedAllocationRefusalThrowsResourceException) {
+  std::vector<std::uint8_t> golden = read_fixture_bytes("v1_original_payload.bin");
+  ASSERT_GT(golden.size(), 0U);
+
+  // Install hook to simulate secure memory allocation refusal
+  Secret::set_allocation_failure_hook([](std::size_t) -> bool {
+    return true;  // Fail all allocations
+  });
+
+  EXPECT_THROW({
+    (void)VaultSerializer::deserialize(golden.data(), golden.size());
+  }, pwledger::VaultResourceException);
+
+  // Reset hook to nullptr
+  Secret::set_allocation_failure_hook(nullptr);
+
+  // Subsequent deserialization succeeds cleanly
+  PrimaryTable recovered = VaultSerializer::deserialize(golden.data(), golden.size());
+  EXPECT_EQ(recovered.size(), 5U);
+}
+
+// (h) Fixture integrity & golden payload byte comparison
+TEST_F(VaultTest, FixtureIntegrityAndGoldenPayloadComparison) {
+  std::vector<std::uint8_t> golden = read_fixture_bytes("v1_original_payload.bin");
+  ASSERT_GT(golden.size(), 0U);
+
+  PrimaryTable table = VaultSerializer::deserialize(golden.data(), golden.size());
+  EXPECT_EQ(table.size(), 5U);
+
+  bool found_github = false;
+  bool found_istanbul = false;
+  bool found_router = false;
+  bool found_bastion = false;
+  bool found_munich = false;
+
+  for (const auto& [id, entry] : table) {
+    if (entry.primary_key == "github.com") {
+      found_github = true;
+      EXPECT_EQ(entry.username_or_email, "alice_developer");
+      entry.plaintext_secret.with_read_access([](std::span<const char> s) {
+        EXPECT_EQ(std::string_view(s.data(), s.size()), "CorrectHorseBatteryStaple2026!");
+      });
+    } else if (entry.primary_key == "İstanbul Finans Kurumu") {
+      found_istanbul = true;
+      EXPECT_EQ(entry.username_or_email, "hüseyin.özkan@örnek.com");
+      entry.plaintext_secret.with_read_access([](std::span<const char> s) {
+        EXPECT_EQ(std::string_view(s.data(), s.size()), "P@sswörd_Türkçe_2026!çşğüöı");
+      });
+    } else if (entry.primary_key == "internal-router") {
+      found_router = true;
+      EXPECT_EQ(entry.username_or_email, "admin");
+      entry.plaintext_secret.with_read_access([](std::span<const char> s) {
+        EXPECT_EQ(std::string_view(s.data(), s.size()), "n0_n0tes_n0_2fa");
+      });
+    } else if (entry.primary_key == "bastion.prod.internal") {
+      found_bastion = true;
+      EXPECT_EQ(entry.username_or_email, "ops_admin");
+      EXPECT_GE(entry.security_policy.note.size(), 8000U);
+      entry.plaintext_secret.with_read_access([](std::span<const char> s) {
+        EXPECT_EQ(std::string_view(s.data(), s.size()), "VaultSuperSecretPassphrase!99");
+      });
+    } else if (entry.primary_key == "München Cloud Dienste") {
+      found_munich = true;
+      EXPECT_EQ(entry.username_or_email, "jürgen.müller@münchen.de");
+      entry.plaintext_secret.with_read_access([](std::span<const char> s) {
+        EXPECT_EQ(std::string_view(s.data(), s.size()), "ÜberGeheimesPasswort#2026!");
+      });
+    }
+  }
+
+  EXPECT_TRUE(found_github);
+  EXPECT_TRUE(found_istanbul);
+  EXPECT_TRUE(found_router);
+  EXPECT_TRUE(found_bastion);
+  EXPECT_TRUE(found_munich);
+}
+
+// (i) Fast randomized mutation test: 2,000 mutations, asserting OK or typed exception in < 5s
+TEST_F(VaultTest, FastRandomizedMutationTestUnderFiveSeconds) {
+  std::vector<std::uint8_t> golden = read_fixture_bytes("v1_original_payload.bin");
+  ASSERT_GT(golden.size(), 0U);
+
+  std::mt19937 rng(42);  // Deterministic fixed seed
+  std::uniform_int_distribution<std::size_t> op_dist(0, 4);
+  std::uniform_int_distribution<int> byte_dist(0, 255);
+
+  auto start_tp = std::chrono::steady_clock::now();
+  const std::size_t kIterations = 2000;
+
+  for (std::size_t i = 0; i < kIterations; ++i) {
+    std::vector<std::uint8_t> mutated = golden;
+    std::size_t op = op_dist(rng);
+
+    if (op == 0 && mutated.size() > 1) {
+      std::size_t idx = std::uniform_int_distribution<std::size_t>(0, mutated.size() - 1)(rng);
+      mutated[idx] ^= static_cast<std::uint8_t>(1 << (rng() % 8));
+    } else if (op == 1 && mutated.size() > 1) {
+      std::size_t a = std::uniform_int_distribution<std::size_t>(0, mutated.size() - 1)(rng);
+      std::size_t b = std::uniform_int_distribution<std::size_t>(0, mutated.size() - 1)(rng);
+      std::swap(mutated[a], mutated[b]);
+    } else if (op == 2 && mutated.size() > 1) {
+      std::size_t trunc_len = std::uniform_int_distribution<std::size_t>(0, mutated.size() - 1)(rng);
+      mutated.resize(trunc_len);
+    } else if (op == 3) {
+      std::size_t insert_pos = std::uniform_int_distribution<std::size_t>(0, mutated.size())(rng);
+      mutated.insert(mutated.begin() + static_cast<std::ptrdiff_t>(insert_pos), static_cast<std::uint8_t>(byte_dist(rng)));
+    } else {
+      if (!mutated.empty()) {
+        std::size_t idx = std::uniform_int_distribution<std::size_t>(0, mutated.size() - 1)(rng);
+        mutated[idx] = static_cast<std::uint8_t>(byte_dist(rng));
+      }
+    }
+
+    try {
+      (void)VaultSerializer::deserialize(mutated.data(), mutated.size());
+    } catch (const pwledger::VaultCorruptException&) {
+      // Expected on format/structural corruption
+    } catch (const pwledger::VaultResourceException&) {
+      // Expected on resource bound breaches
+    } catch (const std::exception& e) {
+      FAIL() << "Unexpected exception type (not VaultCorruptException/VaultResourceException): " << e.what();
+    }
+  }
+
+  auto end_tp = std::chrono::steady_clock::now();
+  auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_tp - start_tp).count();
+  EXPECT_LT(elapsed_ms, 5000) << "Mutation test took longer than 5 seconds: " << elapsed_ms << " ms";
 }

@@ -50,6 +50,13 @@ struct SecretEntry {
   // secret_size and salt_size are the byte lengths of the respective buffers.
   SecretEntry(std::string pk, std::string user, std::size_t secret_size, std::size_t salt_size);
 
+  // Constructor taking already-created Secret objects.
+  SecretEntry(std::string pk, std::string user, Secret secret_buf, Secret salt_buf);
+
+  // Untrusted construction factory: allocates memory using try_create, throwing
+  // VaultResourceException if secure memory allocation fails.
+  static SecretEntry try_create(std::string pk, std::string user, std::size_t secret_size, std::size_t salt_size);
+
   ~SecretEntry() = default;
   SecretEntry(SecretEntry&&) = default;
   SecretEntry& operator=(SecretEntry&&) = default;

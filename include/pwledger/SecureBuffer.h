@@ -27,6 +27,8 @@
 #include <utility>
 #include <vector>
 
+#include <pwledger/VaultExceptions.h>
+
 namespace pwledger {
 
 // Maximum allowable buffer capacity for operations to prevent memory exhaustion (64 MiB)

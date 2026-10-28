@@ -16,7 +16,7 @@
 | **TASK-03** | UUID Alignment & Libsodium CSPRNG (COR-01) | `refactor/core-crypto` | `87652a1` | 27/27 passed | ASan+UBSan pass | Pass | Linux WSL2 (GCC 14.3), Windows (MSVC 2022) | ✅ Complete |
 | **TASK-04** | Explicit Secret Payload Length (SEC-01) | `refactor/core-crypto` | `834ccbc` | 31/31 passed | ASan+UBSan pass | Pass | Linux WSL2 (GCC 14.3), Windows (MSVC 2022) | ✅ Complete |
 | **TASK-05** | Secure Serialization Buffer (`SecureBuffer`) (SEC-02) | `refactor/core-crypto` | `b3184f4` | 39/39 passed | ASan+UBSan+LSan pass | Pass | Linux WSL2 (GCC 14.3), Windows (MSVC 2022) | ✅ Complete |
-| **TASK-06** | Bounds Validation in Deserializer (COR-03, COR-05) | `refactor/core-crypto` | Pending | — | — | — | — | ⏳ Pending |
+| **TASK-06** | Bounds Validation in Deserializer (COR-03, COR-05) | `refactor/core-crypto` | Pending | 51/51 passed | ASan+UBSan+LSan pass | Pass | Linux WSL2 (GCC 14.3), Windows (MSVC 2022) | ✅ Complete |
 | **TASK-07** | Modern CMake Interface Target `pwledger_hardening_flags` | `refactor/build-hardening` | Pending | — | — | — | — | ⏳ Pending |
 | **TASK-08** | Activate MSVC Hardening Flags (SEC-06) | `refactor/build-hardening` | Pending | — | — | — | — | ⏳ Pending |
 | **TASK-09** | Automated Multi-Platform CI Workflow (CI-01) | `refactor/build-hardening` | Pending | — | — | — | — | ⏳ Pending |
@@ -45,8 +45,8 @@
   - Compatibility test passes against the baseline commit and refactor tree.
   - `CMakePresets.json` v3 tested on Linux (WSL) and Windows (MSVC 2022).
   - STOP and wait for user approval before starting TASK-03.
-- [ ] **Checkpoint 3: Stage 2 Completion (TASK-03 to TASK-06)**:
-  - Core crypto and safety hardening complete; zero unaligned UB; `SecureBuffer` active; bounds checks verified.
+- [x] **Checkpoint 3: Stage 2 Completion (TASK-03 to TASK-06)**:
+  - Core crypto and safety hardening complete; zero unaligned UB; `SecureBuffer` active; bounds checks and safe untrusted allocation verified.
 - [ ] **Checkpoint 4: Stage 3 Completion (TASK-07 to TASK-09)**:
   - Modern CMake interface target; MSVC hardening flags active and audited; GitHub Actions CI workflow created.
 - [ ] **Checkpoint 5: Stage 4 Completion (TASK-10 to TASK-15)**:

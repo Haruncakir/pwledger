@@ -20,6 +20,7 @@
 #define PWLEDGER_SECRET_H
 
 #include <sodium.h>
+#include <pwledger/VaultExceptions.h>
 
 #include <atomic>
 #include <cassert>
@@ -189,6 +190,19 @@ public:
   // payload length (clamped to capacity).
   Secret(std::size_t capacity, std::size_t payload_length);
 
+  // Untrusted allocation factory: creates a Secret with sodium-hardened memory
+  // without aborting. Throws VaultResourceException if sodium_malloc fails
+  // or capacity is 0.
+  static Secret try_create(std::size_t capacity, std::size_t payload_length = 0);
+
+  // Re-allocates or allocates capacity using try_allocate semantics, throwing
+  // VaultResourceException if sodium_malloc fails or size is 0.
+  void try_allocate(std::size_t size);
+
+  // Test hook for simulating allocation failure during untrusted deserialization.
+  using AllocationFailureHook = bool (*)(std::size_t size);
+  static void set_allocation_failure_hook(AllocationFailureHook hook) noexcept;
+
   // -- Destruction ------------------------------------------------------------
   // sodium_free internally calls sodium_memzero before releasing the page,
   // so wipe_and_free() does not need to call sodium_memzero separately.
@@ -262,6 +276,9 @@ public:
   [[nodiscard]] decltype(auto) with_write_access(F&& f);
 
 private:
+  struct UntrustedTag {};
+  Secret(UntrustedTag, std::size_t capacity, std::size_t payload_length);
+
   char* data_ = nullptr;  // TODO: std::byte* or std::span<std::byte>
   std::size_t capacity_ = 0;
   std::size_t payload_length_ = 0;

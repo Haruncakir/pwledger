@@ -22,6 +22,7 @@
 #include <pwledger/PrimaryTable.h>
 #include <pwledger/SecureBuffer.h>
 #include <pwledger/Secret.h>
+#include <pwledger/VaultExceptions.h>
 
 #include <cstdint>
 #include <cstring>
@@ -58,18 +59,31 @@ namespace pwledger {
 //     [1 byte has_expires_at][if 1: 8 bytes expires_at (epoch seconds)]
 //     [4 bytes note_len][note_len bytes note]
 //
+// Invariants & Policies:
+//   - Structural Bounds: Minimum entry size in wire format v1 is 66 bytes.
+//     num_entries > (size - pos) / 66 or > kMaxStructuralEntries throws VaultCorruptException.
+//   - Field Bounds: Any field length exceeding remaining bytes throws VaultCorruptException.
+//   - Safe Untrusted Allocation: Entries use try_create so memory allocation failure
+//     throws VaultResourceException instead of aborting.
+//   - Trailing Bytes Policy: Any unparsed trailing bytes after reading num_entries
+//     cause VaultCorruptException.
+//   - Duplicate UUID Policy: Retains the first occurrence and ignores subsequent
+//     duplicates without secret or memory leaks.
+//
 // Integers are stored in little-endian.
 
 class VaultSerializer {
 public:
   static constexpr std::uint8_t kMagic[4] = {'P', 'W', 'L', '\0'};
   static constexpr std::uint8_t kVersion = 1;
+  static constexpr std::size_t kMinEntryBytes = 66;
+  static constexpr std::uint64_t kMaxStructuralEntries = 1'000'000;
 
   // Serializes the table directly into sodium-hardened SecureBuffer.
   static SecureBuffer serialize(const PrimaryTable& table);
 
-  // Deserializes a buffer back into a PrimaryTable. Throws std::runtime_error
-  // on format violations.
+  // Deserializes a buffer back into a PrimaryTable. Throws VaultCorruptException
+  // on format/structural violations, or VaultResourceException on memory exhaustion.
   static PrimaryTable deserialize(const std::uint8_t* data, std::size_t size);
   static PrimaryTable deserialize(const SecureBuffer& buffer) {
     return deserialize(buffer.data(), buffer.size());

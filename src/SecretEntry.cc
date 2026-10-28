@@ -30,4 +30,18 @@ SecretEntry::SecretEntry(std::string pk, std::string user, std::size_t secret_si
     , metadata{std::chrono::system_clock::now(), std::chrono::system_clock::now(), std::chrono::system_clock::now()} {
 }
 
+SecretEntry::SecretEntry(std::string pk, std::string user, Secret secret_buf, Secret salt_buf)
+    : primary_key(std::move(pk))
+    , username_or_email(std::move(user))
+    , plaintext_secret(std::move(secret_buf))
+    , salt(std::move(salt_buf))
+    , metadata{std::chrono::system_clock::now(), std::chrono::system_clock::now(), std::chrono::system_clock::now()} {
+}
+
+SecretEntry SecretEntry::try_create(std::string pk, std::string user, std::size_t secret_size, std::size_t salt_size) {
+  Secret sec = Secret::try_create(secret_size);
+  Secret slt = Secret::try_create(salt_size);
+  return SecretEntry(std::move(pk), std::move(user), std::move(sec), std::move(slt));
+}
+
 }  // namespace pwledger

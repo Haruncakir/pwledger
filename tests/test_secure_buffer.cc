@@ -108,7 +108,7 @@ TEST_F(SecureBufferTest, AppendAndPushBack) {
 }
 
 TEST_F(SecureBufferTest, UntrustedSizeLimitEnforced) {
-  EXPECT_THROW(pwledger::SecureBuffer(pwledger::kMaxSecureBufferBytes + 1), std::length_error);
+  EXPECT_THROW(pwledger::SecureBuffer(pwledger::kMaxSecureBufferBytes + 1), pwledger::VaultResourceException);
 }
 
 using SecureBufferDeathTest = SecureBufferTest;

@@ -749,6 +749,8 @@ Clipboard operations are an inherent security concession (any process under the 
 - **Master password in transit** — sent as plaintext JSON over the native messaging pipe; intermediary buffers are zeroed but JSON parser may retain copies
 - **Single-user, single-process** — no concurrent access protection; don't run CLI and extension against the same vault simultaneously
 - **JSON parser copies** — nlohmann/json may retain internal copies of the password string during parsing; these are outside our zeroing reach
+- **OS-dependent Entry Capacity (Linux VMA Limits)** — Each stored credential consumes hardened memory allocated via `sodium_malloc`, which places hardware guard pages before and after allocations. On Linux, each entry consumes 8 Virtual Memory Areas (VMAs) across its secret and salt buffers. On default Linux desktop distributions where `vm.max_map_count` defaults to 65,530, a single vault table cannot exceed approximately 8,186 entries before the kernel refuses further `mmap` calls. If resource limits are reached during deserialization, `pwledger` cleanly aborts the load by throwing `pwledger::VaultResourceException: "sodium_malloc failed to allocate secure memory"` rather than crashing or terminating the process. To load larger vaults (>10,000 entries) on Linux, increase `vm.max_map_count` (e.g. `sudo sysctl -w vm.max_map_count=262144`). On Windows and macOS, virtual memory map count limits are significantly looser or dynamically managed.
+- **Maximum Decrypted Vault Size** — Vault payload buffers are bounded by `kMaxSecureBufferBytes = 64 MiB`. Files exceeding this limit throw `pwledger::VaultResourceException`.
 
 ---
 

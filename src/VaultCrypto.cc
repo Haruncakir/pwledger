@@ -80,12 +80,12 @@ SecureBuffer VaultCrypto::decrypt_vault(std::string_view password, const std::ve
 
 SecureBuffer VaultCrypto::decrypt_vault(std::string_view password, std::span<const std::uint8_t> ciphertext_blob) {
   if (ciphertext_blob.size() < kHeaderBytes + kTagBytes) {
-    throw std::runtime_error("Ciphertext too short (missing headers or tag)");
+    throw VaultCorruptException("Ciphertext too short (missing headers or tag)");
   }
 
   std::size_t untrusted_payload_size = ciphertext_blob.size() - kHeaderBytes - kTagBytes;
   if (untrusted_payload_size > kMaxSecureBufferBytes) {
-    throw std::length_error("Decrypted vault size exceeds 64 MiB limit");
+    throw VaultResourceException("Decrypted vault size exceeds 64 MiB limit");
   }
 
   const std::uint8_t* salt = ciphertext_blob.data();
@@ -110,7 +110,7 @@ SecureBuffer VaultCrypto::decrypt_vault(std::string_view password, std::span<con
   });
 
   if (!dec_ok) {
-    throw std::runtime_error("Decryption failed (incorrect password or corrupted vault)");
+    throw AuthenticationFailedException("Decryption failed (incorrect password or corrupted vault)");
   }
 
   plaintext.resize(plaintext_len);
