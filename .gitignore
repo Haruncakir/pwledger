@@ -69,8 +69,10 @@ pwledger_test_*
 #*#
 .#*
 
-# Scratch & local developer configs
+# Scratch, agent skills & local developer configs
 scratch/
 CMakeUserPresets.json
+.agents/
+
 
 
