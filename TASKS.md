@@ -9,6 +9,7 @@
 - No new external dependencies without user approval.
 - No weakening of compiler warning or hardening flags.
 - Zero secrets in standard `std::string` or general heap.
+- Line Endings: Files keep the EOL style they have today; new files use LF; do not mix styles within a file. A repo-wide EOL normalization is a separate, explicit commit that only the user may request.
 
 ---
 

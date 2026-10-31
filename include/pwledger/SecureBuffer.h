@@ -19,6 +19,7 @@
 #ifndef PWLEDGER_SECUREBUFFER_H
 #define PWLEDGER_SECUREBUFFER_H
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -47,9 +48,12 @@ inline constexpr std::size_t kMaxSecureBufferBytes = 64 * 1024 * 1024;
 //     allocation failure rather than aborting.
 class SecureBuffer {
 public:
-  // Hook for testing that growth zeroizes old memory before deallocation
+#if defined(PWLEDGER_TESTING)
+  // Hook for testing that growth zeroizes old memory before deallocation.
+  // Thread-safe via atomic store/load. Excluded from production builds.
   using GrowthWipeObserver = void (*)(const std::uint8_t* old_data, std::size_t old_cap);
   static void set_growth_wipe_observer(GrowthWipeObserver observer) noexcept;
+#endif
 
   SecureBuffer() noexcept = default;
 
@@ -121,7 +125,9 @@ private:
   std::size_t size_ = 0;
   std::size_t capacity_ = 0;
 
-  static inline GrowthWipeObserver growth_wipe_observer_ = nullptr;
+#if defined(PWLEDGER_TESTING)
+  static inline std::atomic<GrowthWipeObserver> growth_wipe_observer_{nullptr};
+#endif
 
   void reallocate(std::size_t new_capacity);
   void wipe_and_free() noexcept;

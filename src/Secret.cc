@@ -18,18 +18,21 @@
 
 #include <pwledger/Secret.h>
 
+#include <atomic>
 #include <cstdlib>
 #include <stdexcept>
 
 namespace pwledger {
 
+#if defined(PWLEDGER_TESTING)
 namespace {
-Secret::AllocationFailureHook s_allocation_failure_hook = nullptr;
+std::atomic<Secret::AllocationFailureHook> s_allocation_failure_hook{nullptr};
 }
 
 void Secret::set_allocation_failure_hook(AllocationFailureHook hook) noexcept {
-  s_allocation_failure_hook = hook;
+  s_allocation_failure_hook.store(hook, std::memory_order_release);
 }
+#endif
 
 Secret::Secret(UntrustedTag, std::size_t capacity, std::size_t payload_length) {
   try_allocate(capacity);
@@ -47,9 +50,12 @@ void Secret::try_allocate(std::size_t size) {
   if (size == 0) {
     throw VaultResourceException("Secret allocation size cannot be zero");
   }
-  if (s_allocation_failure_hook && s_allocation_failure_hook(size)) {
+#if defined(PWLEDGER_TESTING)
+  auto hook = s_allocation_failure_hook.load(std::memory_order_acquire);
+  if (hook && hook(size)) {
     throw VaultResourceException("Simulated secure memory allocation refusal");
   }
+#endif
   char* new_data = static_cast<char*>(sodium_malloc(size));
   if (!new_data) {
     throw VaultResourceException("sodium_malloc failed to allocate secure memory");

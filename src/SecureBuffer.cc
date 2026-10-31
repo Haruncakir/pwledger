@@ -24,9 +24,11 @@
 
 namespace pwledger {
 
+#if defined(PWLEDGER_TESTING)
 void SecureBuffer::set_growth_wipe_observer(GrowthWipeObserver observer) noexcept {
-  growth_wipe_observer_ = observer;
+  growth_wipe_observer_.store(observer, std::memory_order_release);
 }
+#endif
 
 SecureBuffer::SecureBuffer(std::size_t initial_capacity) {
   if (initial_capacity > 0) {
@@ -79,9 +81,12 @@ void SecureBuffer::reallocate(std::size_t new_capacity) {
     }
     // Wipe old buffer completely before free
     sodium_memzero(data_, capacity_);
-    if (growth_wipe_observer_) {
-      growth_wipe_observer_(data_, capacity_);
+#if defined(PWLEDGER_TESTING)
+    auto obs = growth_wipe_observer_.load(std::memory_order_acquire);
+    if (obs) {
+      obs(data_, capacity_);
     }
+#endif
     sodium_free(data_);
   }
 

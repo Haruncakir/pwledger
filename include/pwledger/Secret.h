@@ -199,9 +199,12 @@ public:
   // VaultResourceException if sodium_malloc fails or size is 0.
   void try_allocate(std::size_t size);
 
+#if defined(PWLEDGER_TESTING)
   // Test hook for simulating allocation failure during untrusted deserialization.
+  // Thread-safe via atomic store/load. Excluded from production builds.
   using AllocationFailureHook = bool (*)(std::size_t size);
   static void set_allocation_failure_hook(AllocationFailureHook hook) noexcept;
+#endif
 
   // -- Destruction ------------------------------------------------------------
   // sodium_free internally calls sodium_memzero before releasing the page,

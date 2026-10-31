@@ -77,6 +77,9 @@
    - *Correction*: Replaced arbitrary 10,000 cap with mathematical structural limits: wire format v1 minimum entry size = 66 bytes, so `num_entries > (size - pos) / 66` is mathematically impossible and throws `VaultCorruptException`. Upper sanity bound `kMaxStructuralEntries = 1,000,000`. String and secret lengths are strictly bounded by remaining buffer bytes (`len > size - pos`), ensuring zero truncation of legitimate original vaults. Memory exhaustion throws `VaultResourceException` instead of aborting. Documented in ADR-001.
 6. **Amendment 7 (Quality Bar Amendments in CONSTRAINTS.md)**:
    - *Approved*: Drop MSan and Valgrind; redefine Gate 3 (ASan+UBSan+LSan on Linux, ≥85% branch coverage on core/host in Phase 4, extension linting); define per-platform sanitizer matrix (Linux = ASan+UBSan+LSan, macOS = ASan+UBSan, MSVC = ASan, MinGW = Build+CTest only after proving `libasan` is absent in MinGW GCC); define exact binary audit commands (`checksec`, `dumpbin /headers /loadconfig`, `otool -hv` + `nm -u`); CMake feature check for `_FORTIFY_SOURCE=3/2/none`; `SYSTEM` includes with MSVC `/external:I /external:W0`; committed `.clang-tidy` and `cppcheck-suppressions.txt` with per-rule justifications; CMake minimum 3.21.
+7. **Amendment 8 (Line Endings & Test Seam Policy)**:
+   - *Line Endings*: Existing files preserve their current EOL style; new files strictly use LF; do not mix within a file. Repo-wide EOL normalization is deferred to an explicit user request.
+   - *Test Hooks*: Test-only failure hooks (`set_allocation_failure_hook`, `set_growth_wipe_observer`) must be guarded by `PWLEDGER_TESTING`, be thread-safe (`std::atomic`), and be completely omitted from production builds.
 
 ---
 

@@ -60,3 +60,8 @@ if(TARGET Sodium::Sodium)
 else()
     target_link_libraries(pwledger_core PUBLIC sodium nlohmann_json::nlohmann_json)
 endif()
+
+option(PWLEDGER_TESTING "Enable test failure-injection hooks in pwledger_core" ON)
+if(PWLEDGER_TESTING)
+    target_compile_definitions(pwledger_core PUBLIC PWLEDGER_TESTING=1)
+endif()
