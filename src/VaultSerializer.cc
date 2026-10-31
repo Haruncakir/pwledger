@@ -166,10 +166,10 @@ PrimaryTable VaultSerializer::deserialize(const std::uint8_t* data, std::size_t 
     table.emplace(uuid, std::move(entry));
   }
 
-  if (pos != size) {
-    throw VaultCorruptException("Trailing unparsed bytes at end of vault payload");
-  }
-
+  // Trailing bytes policy: baseline (5cf5990) did not validate pos == size and
+  // silently ignored trailing bytes after reading num_entries. To preserve 100%
+  // backward compatibility with vaults created or modified by third-party tools,
+  // trailing bytes are safely ignored rather than throwing.
   return table;
 }
 

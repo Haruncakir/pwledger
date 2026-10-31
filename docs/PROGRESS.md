@@ -101,13 +101,17 @@ All 7 CONSTRAINTS proposals were approved by the user and committed to `CONSTRAI
 
 - *Note*: Unrelated defects or observations discovered during task execution will be cataloged here rather than expanding task scope.
 - `include/pwledger/Uuid.h` vs `include/pwledger/uuid.h`: Case collision on Windows NTFS resolved via `git update-index --assume-unchanged include/pwledger/Uuid.h`. Redundant orphan header cleanly pruned in TASK-03.
-- `SecretEntry.salt` VMA footprint: `salt` is public cryptographic data (16 bytes, not a secret), but is held in a `Secret` container backed by `sodium_malloc()`, consuming 4 VMAs (`r--p`, `---p`, `rw-p`, `---p`) alongside `plaintext_secret` (8 VMAs total per entry). Storing `salt` as `std::array<uint8_t, 16>` would halve VMA consumption from 8 to 4 per entry (doubling entry capacity on default Linux kernels from ~8,186 to ~16,370). Altering `SecretEntry` members is deferred beyond Stage 2 to preserve struct memory representation until domain refactoring.
+- `SecretEntry.salt` VMA footprint: `salt` is public cryptographic data (16 bytes, not a secret), but is held in a `Secret` container backed by `sodium_malloc()`, consuming 4 VMAs (`r--p`, `---p`, `rw-p`, `---p`) alongside `plaintext_secret` (8 VMAs total per entry). Default Linux kernels (`vm.max_map_count = 65,530`, baseline process overhead 43 VMAs) limit a single active table to $N_{\text{max}} = \lfloor (65,530 - 43) / 8 \rfloor = 8,185$ entries. Storing `salt` as `std::array<uint8_t, 16>` would halve VMA consumption from 8 to 4 per entry (doubling entry capacity on default Linux kernels from 8,185 to 16,371). Altering `SecretEntry` members is deferred beyond Stage 2 to preserve struct memory representation until domain refactoring.
+- Trailing unparsed bytes: Baseline `5cf5990` did not reject trailing unparsed bytes after reading `num_entries`. Deserializer updated to ignore trailing unparsed bytes rather than throwing `VaultCorruptException`, ensuring 100% backward compatibility with third-party tools and legacy fixtures.
+- Test seam isolation: Failure-injection hooks (`set_allocation_failure_hook`, `set_growth_wipe_observer`) are strictly isolated behind `#if defined(PWLEDGER_TESTING)` and backed by `std::atomic` with acquire/release memory ordering. In production builds (`PWLEDGER_TESTING=OFF`), symbols are completely absent from release binaries.
 
 ---
 
 ## 6. Unverified Platform Test Checklist
 
-Because this development host is running **Windows 11 (MSVC 2022 + MinGW GCC)**, macOS and Linux-specific code paths cannot be executed locally. They will be marked as **"implemented, NOT verified on <platform>"** and require verification by the user / CI:
+This development environment is running **Windows 11 (MSVC 2022 v143, MSYS2 UCRT64 GCC 14.2.0)** with **WSL2 (Ubuntu 24.04, GCC 14.3.0)**.
+Linux builds and tests (including ASan, UBSan, and LSan) are directly verified locally in WSL (all 52 tests passing).
+macOS builds and tests cannot be executed locally. They are marked as **"implemented, NOT verified on macOS"** and require verification in GitHub Actions CI:
 
 | Task | Platform | Target Feature | Manual Verification Procedure for User |
 |---|---|---|---|

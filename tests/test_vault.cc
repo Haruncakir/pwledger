@@ -576,18 +576,21 @@ TEST_F(VaultTest, LyingEntryCountTests) {
     EXPECT_THROW((void)VaultSerializer::deserialize(mutated.data(), mutated.size()), pwledger::VaultCorruptException);
   }
 
-  // Lying too low: count = 1, but buffer contains 2 entries (causes trailing bytes error)
+  // When count = 1 on a 2-entry payload, trailing bytes policy (baseline 5cf5990 compatibility)
+  // safely ignores remaining unparsed bytes, recovering 1 valid entry.
   {
     std::vector<std::uint8_t> mutated = bytes;
     mutated[count_offset] = 1;
-    EXPECT_THROW((void)VaultSerializer::deserialize(mutated.data(), mutated.size()), pwledger::VaultCorruptException);
+    PrimaryTable partial = VaultSerializer::deserialize(mutated.data(), mutated.size());
+    EXPECT_EQ(partial.size(), 1U);
   }
 
-  // Zero entries with non-empty payload: count = 0, but payload has entry bytes
+  // Zero entries with unparsed bytes: reads 0 entries and ignores trailing bytes.
   {
     std::vector<std::uint8_t> mutated = bytes;
     mutated[count_offset] = 0;
-    EXPECT_THROW((void)VaultSerializer::deserialize(mutated.data(), mutated.size()), pwledger::VaultCorruptException);
+    PrimaryTable empty = VaultSerializer::deserialize(mutated.data(), mutated.size());
+    EXPECT_EQ(empty.size(), 0U);
   }
 
   // Legitimate empty table (13 bytes total)
@@ -621,20 +624,74 @@ TEST_F(VaultTest, HugeEntryCountThrows) {
   EXPECT_THROW((void)VaultSerializer::deserialize(header.data(), header.size()), pwledger::VaultCorruptException);
 }
 
-// (e) Trailing garbage after last entry
-TEST_F(VaultTest, TrailingGarbageThrows) {
+// (e) Trailing garbage after last entry (non-fatal, preserved from baseline 5cf5990)
+TEST_F(VaultTest, TrailingGarbageIgnored) {
   std::vector<std::uint8_t> golden = read_fixture_bytes("v1_original_payload.bin");
   ASSERT_GT(golden.size(), 0U);
 
+  // Baseline behavior: trailing unparsed bytes after num_entries are safely ignored.
   // Append 1 byte
   std::vector<std::uint8_t> mutated1 = golden;
   mutated1.push_back(0xAA);
-  EXPECT_THROW((void)VaultSerializer::deserialize(mutated1.data(), mutated1.size()), pwledger::VaultCorruptException);
+  EXPECT_NO_THROW({
+    auto t = VaultSerializer::deserialize(mutated1.data(), mutated1.size());
+    EXPECT_FALSE(t.empty());
+  });
 
   // Append 10 bytes
   std::vector<std::uint8_t> mutated10 = golden;
   mutated10.insert(mutated10.end(), 10, 0x55);
-  EXPECT_THROW((void)VaultSerializer::deserialize(mutated10.data(), mutated10.size()), pwledger::VaultCorruptException);
+  EXPECT_NO_THROW({
+    auto t = VaultSerializer::deserialize(mutated10.data(), mutated10.size());
+    EXPECT_FALSE(t.empty());
+  });
+}
+
+// Minimal entries roundtrip: entries with empty strings, 0-byte secret and salt payloads,
+// no expiration, empty notes. Tests that minimum entry size boundary (70 bytes >= 66 bytes)
+// serializes and deserializes cleanly without triggering heuristic or corruption errors.
+TEST_F(VaultTest, MinimalEmptyFieldsEntriesRoundtrip) {
+  PrimaryTable table;
+  std::vector<Uuid> ids;
+  ids.reserve(10);
+
+  for (int i = 0; i < 10; ++i) {
+    Uuid id = Uuid::generate();
+    ids.push_back(id);
+    SecretEntry entry("", "", 256, 16);
+    entry.plaintext_secret.set_length(0);
+    entry.salt.set_length(0);
+    entry.metadata.created_at = std::chrono::system_clock::time_point{};
+    entry.metadata.last_modified_at = std::chrono::system_clock::time_point{};
+    entry.metadata.last_used_at = std::chrono::system_clock::time_point{};
+    entry.security_policy.strength_score = 0;
+    entry.security_policy.reuse_count = 0;
+    entry.security_policy.two_fa_enabled = false;
+    entry.security_policy.expires_at = std::nullopt;
+    entry.security_policy.note = "";
+    table.emplace(id, std::move(entry));
+  }
+
+  SecureBuffer buf = VaultSerializer::serialize(table);
+  // Header: 13 bytes. 10 entries * 70 bytes = 700 bytes. Total: 713 bytes.
+  EXPECT_EQ(buf.size(), 13 + 10 * 70);
+
+  PrimaryTable restored;
+  EXPECT_NO_THROW({
+    restored = VaultSerializer::deserialize(buf.data(), buf.size());
+  });
+  EXPECT_EQ(restored.size(), 10U);
+
+  for (const auto& id : ids) {
+    auto it = restored.find(id);
+    ASSERT_NE(it, restored.end());
+    EXPECT_EQ(it->second.primary_key, "");
+    EXPECT_EQ(it->second.username_or_email, "");
+    EXPECT_EQ(it->second.plaintext_secret.size(), 0U);
+    EXPECT_EQ(it->second.salt.size(), 0U);
+    EXPECT_EQ(it->second.security_policy.note, "");
+    EXPECT_FALSE(it->second.security_policy.expires_at.has_value());
+  }
 }
 
 // (f) Duplicate UUIDs: retains first occurrence, ignores duplicates, no leak or crash
